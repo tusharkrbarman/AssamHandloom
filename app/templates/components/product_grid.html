@@ -1,4 +1,11 @@
-<section id="product-grid" aria-live="polite">
-{% for product in page.items %}<article><a href="/products/{{ product.slug }}">{{ product.title }}</a><p>{{ product.silk_type }} · {{ product.display_price }}</p></article>
-{% else %}<p>No weaves matched your search.</p>{% endfor %}
+<section id="product-grid" class="product-grid" aria-live="polite" aria-label="Catalogue results">
+  {% for product in page.items %}
+    {% include "components/product_card.html" %}
+  {% else %}
+    <div class="empty-state">
+      <p>No weaves matched your search.</p>
+      <a class="text-link" href="/shop">Browse all weaves</a>
+    </div>
+  {% endfor %}
 </section>
+{% if not home %}{% include "components/pagination.html" %}{% endif %}

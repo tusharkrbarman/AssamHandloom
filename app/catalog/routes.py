@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, replace
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +67,20 @@ def _page_payload(page: Page[ProductCard]) -> dict[str, object]:
     }
 
 
+def _listing_context(
+    request: Request, page: Page[ProductCard], query: ProductListQuery
+) -> dict[str, object]:
+    """Provide one stable, shareable context for full and HTMX catalogue renders."""
+
+    pairs = [(key, value) for key, value in request.query_params.multi_items() if key != "page"]
+    pagination_query = urlencode(pairs)
+    return {
+        "page": page,
+        "query": query,
+        "pagination_query": f"{pagination_query}&" if pagination_query else "",
+    }
+
+
 async def product_page(
     request: Request, session: AsyncSession, *, api: bool = False
 ) -> tuple[ProductListQuery, Page[ProductCard]]:
@@ -89,7 +104,7 @@ async def product_api(
 async def shop(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     query, page = await product_page(request, session)
     template = "components/product_grid.html" if is_htmx(request) else "catalog/list.html"
-    return render(request, template, {"page": page, "query": query})
+    return render(request, template, _listing_context(request, page, query))
 
 
 @catalog_router.get("/collections")
@@ -115,7 +130,9 @@ async def collection(
         query, request.app.state.settings.catalogue_preview_enabled
     )
     template = "components/product_grid.html" if is_htmx(request) else "catalog/list.html"
-    return render(request, template, {"page": page, "query": query, "collection": selected})
+    context = _listing_context(request, page, query)
+    context["collection"] = selected
+    return render(request, template, context)
 @catalog_router.get("/products/{slug}")
 async def product(
     slug: str, request: Request, session: AsyncSession = Depends(get_session)
@@ -125,4 +142,12 @@ async def product(
     )
     if detail is None:
         raise HTTPException(status_code=404)
-    return render(request, "catalog/product.html", {"product": detail})
+    related = await _service(session).list_products(
+        ProductListQuery(silk_types=(detail.silk_type,), page_size=4),
+        request.app.state.settings.catalogue_preview_enabled,
+    )
+    return render(
+        request,
+        "catalog/product.html",
+        {"product": detail, "related": [item for item in related.items if item.slug != slug][:3]},
+    )

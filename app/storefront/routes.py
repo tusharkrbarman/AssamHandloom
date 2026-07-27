@@ -14,4 +14,4 @@ storefront_router = APIRouter()
 @storefront_router.get("/")
 async def home(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     _, page = await product_page(request, session)
-    return render(request, "storefront/home.html", {"page": page})
+    return render(request, "storefront/home.html", {"page": page, "home": True})

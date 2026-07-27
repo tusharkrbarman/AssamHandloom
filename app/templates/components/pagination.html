@@ -1,0 +1,7 @@
+{% if page.total_pages > 1 %}
+<nav class="pagination" aria-label="Catalogue pages">
+  {% if page.page > 1 %}<a href="{{ request.url.path }}?{{ pagination_query }}page={{ page.page - 1 }}" rel="prev">Previous</a>{% endif %}
+  <span>Page {{ page.page }} of {{ page.total_pages }}</span>
+  {% if page.page < page.total_pages %}<a href="{{ request.url.path }}?{{ pagination_query }}page={{ page.page + 1 }}" rel="next">Next</a>{% endif %}
+</nav>
+{% endif %}

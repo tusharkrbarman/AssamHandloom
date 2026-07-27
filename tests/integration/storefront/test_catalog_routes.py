@@ -8,7 +8,14 @@ from httpx import AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalog.models import Collection, CollectionProduct, Product, PublicationState, Variant
+from app.catalog.models import (
+    Collection,
+    CollectionProduct,
+    Product,
+    ProductMedia,
+    PublicationState,
+    Variant,
+)
 
 
 @pytest.fixture
@@ -118,6 +125,16 @@ def _product(
             inventory_quantity=1,
         )
     )
+    if slug == "luit-dawn":
+        product.media.append(
+            ProductMedia(
+                id=uuid.uuid4(),
+                product_id=product.id,
+                url="/static/images/luit-dawn.jpg",
+                alt_text="Muga silk in a warm red river-line weave",
+                is_primary=True,
+            )
+        )
     return product
 
 

@@ -1,4 +1,18 @@
-{% extends "base.html" %}{% block content %}
-<h1>{% if collection %}{{ collection.title }}{% elif request.url.path == '/search' %}Search{% else %}Shop{% endif %}</h1>
+{% extends "base.html" %}
+{% block page_title %}{% if collection %}{{ collection.title }} · {% elif request.url.path == '/search' %}Search · {% else %}Shop · {% endif %}Luit &amp; Loom{% endblock %}
+{% block content %}
+<section class="catalogue-intro">
+  <p class="eyebrow">Assamese handloom, considered slowly</p>
+  <h1>{% if collection %}{{ collection.title }}{% elif request.url.path == '/search' %}Search the catalogue{% else %}Shop the catalogue{% endif %}</h1>
+  <p>{% if collection %}A gathering of weaves selected around one material conversation.{% else %}Each listing is a transparent starting point for a future collection release.{% endif %}</p>
+  <p class="sample-label">Sample catalogue: details are presented as a transparent Phase 1 preview.</p>
+</section>
+<form class="catalogue-filters" method="get" action="{{ request.url.path }}" aria-label="Filter the catalogue" hx-get="{{ request.url.path }}" hx-target="#product-grid" hx-push-url="true" hx-select="#product-grid" hx-trigger="change from:select, change from:input[type=checkbox], submit">
+  <div><label for="catalogue-search">Search</label><input id="catalogue-search" name="search" value="{{ query.search or '' }}"></div>
+  <div><label for="silk-type">Silk type</label><select id="silk-type" name="silk_type"><option value="">All silks</option>{% for silk in ('Muga', 'Pat', 'Eri') %}<option value="{{ silk }}" {% if silk in query.silk_types %}selected{% endif %}>{{ silk }}</option>{% endfor %}</select></div>
+  <div><label for="catalogue-sort">Sort</label><select id="catalogue-sort" name="sort">{% for value, label in [('featured', 'Featured'), ('newest', 'Newest'), ('price_asc', 'Price: low to high'), ('price_desc', 'Price: high to low')] %}<option value="{{ value }}" {% if query.sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+  <div><input id="available-only" type="checkbox" name="available_only" value="true" {% if query.available_only %}checked{% endif %}><label for="available-only">Available now</label></div>
+  <button type="submit">Apply filters</button>
+</form>
 {% include "components/product_grid.html" %}
 {% endblock %}

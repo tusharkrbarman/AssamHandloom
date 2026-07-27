@@ -1,1 +1,23 @@
-{% extends "base.html" %}{% block content %}<article><h1>{{ product.title }}</h1><p>{{ product.silk_type }}</p><p>{{ product.description or '' }}</p></article>{% endblock %}
+{% extends "base.html" %}
+{% block page_title %}{{ product.title }} · Luit &amp; Loom{% endblock %}
+{% block content %}
+<article class="product-detail">
+  <div class="product-detail__gallery" aria-label="{{ product.title }} gallery">
+    {% for image in product.media %}<img src="{{ image }}" alt="{{ product.title }} textile detail" width="1000" height="1250" {% if loop.index > 1 %}loading="lazy"{% endif %}>{% else %}<div class="textile-placeholder product-detail__placeholder" role="img" aria-label="Textile-colour study for {{ product.title }}">Textile-colour study</div>{% endfor %}
+  </div>
+  <div class="product-detail__summary">
+    <p class="eyebrow">{{ product.silk_type }}{% if product.colour %} · {{ product.colour }}{% endif %}</p>
+    <h1>{{ product.title }}</h1>
+    <p>{{ product.description or "A considered handloom catalogue entry, shared with material and maker context." }}</p>
+    <p class="price">{{ "₹{:,.0f}".format(product.variants[0].price_minor / 100) if product.variants else "Price on request" }}</p>
+    <p>{% if product.variants and product.variants | selectattr('available') | list %}Available{% else %}Currently unavailable{% endif %}</p>
+    {% if product.sample_label %}<p class="sample-label">{{ product.sample_label }} catalogue item</p>{% endif %}
+    <button type="button" disabled aria-describedby="checkout-note">Add to bag</button>
+    <p id="checkout-note">Checkout opens in the next build phase.</p>
+  </div>
+  <section class="specifications" aria-labelledby="specifications-title"><h2 id="specifications-title">Specifications</h2><dl><div><dt>Silk</dt><dd>{{ product.silk_type }}</dd></div><div><dt>Dimensions</dt><dd>Dimensions confirmed with each finished weave.</dd></div><div><dt>Care</dt><dd>Dry clean gently; store folded away from direct light.</dd></div><div><dt>Occasion</dt><dd>{{ product.occasion or "Everyday ceremony" }}</dd></div></dl></section>
+  {% include "components/provenance.html" %}
+  <section class="product-care" aria-labelledby="shipping-title"><h2 id="shipping-title">Shipping, returns &amp; care</h2><p>Shipping and returns details will be confirmed before checkout opens. Care guidance remains available with every catalogue record.</p><p class="sample-label">Sample catalogue: imagery, availability, and prices are editorial sample data in this first build.</p></section>
+  {% if related %}<section class="related-products" aria-labelledby="related-title"><h2 id="related-title">More in {{ product.silk_type }}</h2><div class="product-grid">{% for product in related %}{% include "components/product_card.html" %}{% endfor %}</div></section>{% endif %}
+</article>
+{% endblock %}

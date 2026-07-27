@@ -1,1 +1,13 @@
-{% extends "base.html" %}{% block content %}<h1>Woven by Assam. Worn with meaning.</h1>{% include "components/product_grid.html" %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<section class="home-hero editorial-grid">
+  <div class="home-hero__copy"><p class="eyebrow">Contemporary Assamese handloom</p><h1>Woven by Assam. Worn with meaning.</h1><p>Quietly expressive silk, traced to the people and practices that make it.</p><div class="action-row"><a class="button" href="/shop">Shop the catalogue</a><a href="/collections">Meet the artisans</a></div></div>
+  <aside class="home-hero__note"><p class="eyebrow">The Luit edit</p><p>Material-led pieces for ceremonies, ordinary days, and the stories between.</p></aside>
+</section>
+<section class="home-section"><div class="section-heading"><p class="eyebrow">Featured weaves</p><h2>Small editions, held in view</h2></div>{% include "components/product_grid.html" %}</section>
+<section class="home-section split-feature"><div><p class="eyebrow">Why Assam silk</p><h2>Three silk traditions, each with its own temper.</h2></div><p>Muga carries a natural gold. Pat has a luminous clarity. Eri offers a softer, breathable hand. We begin with the material and keep its character present.</p></section>
+<section class="home-section collection-edit" aria-labelledby="collection-edit-title"><p class="eyebrow">The material edit</p><h2 id="collection-edit-title">Muga, Pat, Eri</h2><div class="collection-cards"><a class="muga-card" href="/shop?silk_type=Muga"><span>Muga</span><small>Natural gold, ceremonial ease</small></a><a class="pat-card" href="/shop?silk_type=Pat"><span>Pat</span><small>Light, luminous, precise</small></a><a class="eri-card" href="/shop?silk_type=Eri"><span>Eri</span><small>Soft structure, everyday warmth</small></a></div></section>
+<section class="home-section artisan-feature"><p class="eyebrow">Featured artisan</p><h2>Maker stories are introduced with care.</h2><p>This is a sample disclosure: artisan names and production notes will expand as the catalogue grows.</p><a href="/collections">Meet the artisans</a></section>
+<section class="home-section assurance-grid"><article><h2>Craft assurances</h2><p>Material, maker, and catalogue information remain connected.</p></article><article><h2>Occasion edit</h2><p>Wedding, gathering, gift, and everyday ceremony.</p></article><article><h2>Shipping, returns &amp; care</h2><p>Plain-language guidance arrives with each weave.</p></article></section>
+<section class="newsletter-invitation"><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p></section>
+{% endblock %}
