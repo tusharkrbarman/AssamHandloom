@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,50 +92,30 @@ async def shop(request: Request, session: AsyncSession = Depends(get_session)) -
     return render(request, template, {"page": page, "query": query})
 
 
+@catalog_router.get("/collections")
+async def collections(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
+    visible_collections = await _service(session).list_collections(
+        request.app.state.settings.catalogue_preview_enabled
+    )
+    return render(request, "catalog/collections.html", {"collections": visible_collections})
+
+
 @catalog_router.get("/collections/{slug}")
 async def collection(
     slug: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
-    query = parse_product_query(request)
+    query = replace(parse_product_query(request), collection_slug=slug)
     collections = await _service(session).list_collections(
         request.app.state.settings.catalogue_preview_enabled
     )
     selected = next((item for item in collections if item.slug == slug), None)
     if selected is None:
         raise HTTPException(status_code=404)
-    service = _service(session)
-    cards = [
-        card
-        for member in selected.collection_products
-        if (card := service.to_product_card(
-            member.product, request.app.state.settings.catalogue_preview_enabled
-        )) is not None
-    ]
-    cards = _filter_collection_cards(cards, query)
-    total = len(cards)
-    start = (query.page - 1) * query.page_size
-    page = Page(cards[start : start + query.page_size], total, query.page, query.page_size)
+    page = await _service(session).list_products(
+        query, request.app.state.settings.catalogue_preview_enabled
+    )
     template = "components/product_grid.html" if is_htmx(request) else "catalog/list.html"
     return render(request, template, {"page": page, "query": query, "collection": selected})
-
-
-def _filter_collection_cards(
-    cards: list[ProductCard], query: ProductListQuery
-) -> list[ProductCard]:
-    filtered = [
-        card
-        for card in cards
-        if (not query.search or query.search.lower() in card.title.lower())
-        and (not query.silk_types or card.silk_type in query.silk_types)
-        and (not query.available_only or card.available)
-    ]
-    if query.sort == "price_asc":
-        return sorted(filtered, key=lambda card: (card.price_minor, card.slug))
-    if query.sort == "price_desc":
-        return sorted(filtered, key=lambda card: (-card.price_minor, card.slug))
-    return filtered
-
-
 @catalog_router.get("/products/{slug}")
 async def product(
     slug: str, request: Request, session: AsyncSession = Depends(get_session)

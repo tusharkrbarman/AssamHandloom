@@ -32,6 +32,16 @@ class CatalogRepository:
             CatalogRepository._visible_product_clause(preview_enabled)
         )
 
+        if query.collection_slug:
+            statement = (
+                statement.join(CollectionProduct, CollectionProduct.product_id == Product.id)
+                .join(Collection, Collection.id == CollectionProduct.collection_id)
+                .where(
+                    Collection.slug == query.collection_slug,
+                    Collection.publication_state.in_(CatalogRepository._visible_states(preview_enabled)),
+                )
+            )
+
         if query.search:
             statement = statement.where(func.lower(Product.title).contains(query.search.lower()))
         if query.silk_types:

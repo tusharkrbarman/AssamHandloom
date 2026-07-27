@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -21,15 +22,47 @@ async def seeded_catalog(test_database_url: str) -> None:
         await session.execute(delete(Variant))
         await session.execute(delete(Product))
         products = [
-            _product("luit-dawn", "Luit Dawn", "Muga", 190_000, featured_rank=3),
-            _product("kopou-ivory", "Kopou Ivory", "Pat", 180_000, featured_rank=2),
-            _product("muga-evening", "Muga Evening", "Muga", 250_000, featured_rank=1),
+            _product(
+                "luit-dawn",
+                "Luit Dawn",
+                "Muga",
+                190_000,
+                colour="Red",
+                occasion="Wedding",
+                featured_rank=3,
+                created_at=_created_at(1),
+                product_id=1,
+            ),
+            _product(
+                "kopou-ivory",
+                "Kopou Ivory",
+                "Pat",
+                180_000,
+                colour="Ivory",
+                occasion="Everyday",
+                featured_rank=2,
+                created_at=_created_at(3),
+                product_id=2,
+            ),
+            _product(
+                "muga-evening",
+                "Muga Evening",
+                "Muga",
+                250_000,
+                colour="Green",
+                occasion="Wedding",
+                featured_rank=1,
+                created_at=_created_at(1),
+                product_id=3,
+            ),
             _product(
                 "unpublished-weave",
                 "Unpublished Weave",
                 "Muga",
                 99_000,
                 state=PublicationState.DRAFT,
+                colour="Red",
+                occasion="Wedding",
             ),
         ]
         collection = Collection(
@@ -42,6 +75,7 @@ async def seeded_catalog(test_database_url: str) -> None:
             [
                 CollectionProduct(product=products[0], display_order=0),
                 CollectionProduct(product=products[1], display_order=1),
+                CollectionProduct(product=products[2], display_order=2),
             ]
         )
         session.add_all([*products, collection])
@@ -56,15 +90,22 @@ def _product(
     price_minor: int,
     *,
     state: PublicationState = PublicationState.PUBLISHED,
+    colour: str | None = None,
+    occasion: str | None = None,
     featured_rank: int = 0,
+    created_at: datetime | None = None,
+    product_id: int | None = None,
 ) -> Product:
     product = Product(
-        id=uuid.uuid4(),
+        id=uuid.UUID(int=product_id) if product_id is not None else uuid.uuid4(),
         slug=slug,
         title=title,
         silk_type=silk_type,
+        colour=colour,
+        occasion=occasion,
         publication_state=state,
         featured_rank=featured_rank,
+        created_at=created_at,
     )
     product.variants.append(
         Variant(
@@ -78,6 +119,10 @@ def _product(
         )
     )
     return product
+
+
+def _created_at(days: int) -> datetime:
+    return datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=days)
 
 
 @pytest.mark.anyio
@@ -163,10 +208,61 @@ async def test_collection_product_and_unknown_product_boundaries(
 
     assert collection.status_code == 200
     assert "Luit Dawn" in collection.text
-    assert "Muga Evening" not in collection.text
+    assert "Muga Evening" in collection.text
     assert product.status_code == 200
     assert "Luit Dawn" in product.text
     assert missing.status_code == 404
     assert "We couldn’t find that weave" in missing.text
     assert 'href="/search"' in missing.text
-    assert 'href="/collections/' in missing.text
+    assert 'href="/collections"' in missing.text
+
+
+@pytest.mark.anyio
+async def test_collection_honours_repeated_filters_newest_order_and_htmx_parity(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    url = (
+        "/collections/river-reed-gold?colour=Red&colour=Ivory&occasion=Wedding"
+        "&occasion=Everyday&sort=newest&page_size=1"
+    )
+    full = await app_client.get(url)
+    partial = await app_client.get(url, headers={"HX-Request": "true"})
+
+    assert full.status_code == 200
+    assert "Kopou Ivory" in full.text
+    assert "Luit Dawn" not in full.text
+    assert "Muga Evening" not in full.text
+    assert 'id="product-grid"' in partial.text
+    assert "Kopou Ivory" in partial.text
+    assert "Luit Dawn" not in partial.text
+    assert "<!doctype html>" not in partial.text.lower()
+
+
+@pytest.mark.anyio
+async def test_collection_pagination_has_bounds_and_stable_newest_ties(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    first = await app_client.get("/collections/river-reed-gold?sort=newest&page=0&page_size=1")
+    repeated = await app_client.get("/collections/river-reed-gold?sort=newest&page=1&page_size=1")
+    second = await app_client.get("/collections/river-reed-gold?sort=newest&page=2&page_size=1")
+    repeated_second = await app_client.get(
+        "/collections/river-reed-gold?sort=newest&page=2&page_size=1"
+    )
+    third = await app_client.get("/collections/river-reed-gold?sort=newest&page=3&page_size=1")
+
+    assert first.status_code == 200
+    assert first.text == repeated.text
+    assert "Kopou Ivory" in first.text
+    assert "Luit Dawn" in second.text
+    assert second.text == repeated_second.text
+    assert "Muga Evening" in third.text
+
+
+@pytest.mark.anyio
+async def test_collections_landing_is_a_safe_404_recovery_destination(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    response = await app_client.get("/collections")
+
+    assert response.status_code == 200
+    assert "River, Reed &amp; Gold" in response.text

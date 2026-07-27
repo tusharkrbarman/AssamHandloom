@@ -10,6 +10,7 @@ class ProductListQuery:
     """Supported public catalogue filters and stable pagination settings."""
 
     search: str | None = None
+    collection_slug: str | None = None
     silk_types: tuple[str, ...] = ()
     colours: tuple[str, ...] = ()
     occasions: tuple[str, ...] = ()
