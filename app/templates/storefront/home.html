@@ -1,13 +1,43 @@
 {% extends "base.html" %}
 {% block content %}
+{% set hero_product = page.items[0] if page.items else none %}
 <section class="home-hero editorial-grid">
-  <div class="home-hero__copy"><p class="eyebrow">Contemporary Assamese handloom</p><h1>Woven by Assam. Worn with meaning.</h1><p>Quietly expressive silk, traced to the people and practices that make it.</p><div class="action-row"><a class="button" href="/shop">Shop the catalogue</a><a href="/artisans">Meet the artisans</a></div></div>
-  <aside class="home-hero__note"><p class="eyebrow">The Luit edit</p><p>Material-led pieces for ceremonies, ordinary days, and the stories between.</p></aside>
+  <div class="home-hero__copy">
+    <p class="eyebrow">Contemporary Assamese handloom</p>
+    <h1>Woven by Assam.<br>Worn with meaning.</h1>
+    <p class="hero-deck">Quietly expressive silk, traced to the people and practices that make it.</p>
+    <div class="action-row"><a class="button" href="/shop?sort=newest">Shop new arrivals</a><a class="button button--secondary" href="/our-story">View our story</a></div>
+  </div>
+  <figure class="home-hero__visual">
+    {% if hero_product and hero_product.primary_media %}
+      <a href="/products/{{ hero_product.slug }}"><img src="{{ hero_product.primary_media.url }}" alt="{{ hero_product.primary_media.alt_text or hero_product.title }}" width="720" height="900"></a>
+    {% else %}
+      <span class="textile-placeholder" role="img" aria-label="Assamese silk textile-colour study">Textile-colour study</span>
+    {% endif %}
+    <figcaption><span class="eyebrow">The Luit edit</span><span>{% if hero_product %}{{ hero_product.title }} · {{ hero_product.silk_type }} silk{% else %}Material-led pieces, considered with care{% endif %}</span></figcaption>
+  </figure>
 </section>
-<section class="home-section"><div class="section-heading"><p class="eyebrow">Featured weaves</p><h2>Small editions, held in view</h2></div>{% include "components/product_grid.html" %}</section>
-<section class="home-section split-feature"><div><p class="eyebrow">Why Assam silk</p><h2>Three silk traditions, each with its own temper.</h2></div><p>Muga carries a natural gold. Pat has a luminous clarity. Eri offers a softer, breathable hand. We begin with the material and keep its character present.</p></section>
-<section class="home-section collection-edit" aria-labelledby="collection-edit-title"><p class="eyebrow">The material edit</p><h2 id="collection-edit-title">Muga, Pat, Eri</h2><div class="collection-cards"><a class="muga-card" href="/shop?silk_type=Muga"><span>Muga</span><small>Natural gold, ceremonial ease</small></a><a class="pat-card" href="/shop?silk_type=Pat"><span>Pat</span><small>Light, luminous, precise</small></a><a class="eri-card" href="/shop?silk_type=Eri"><span>Eri</span><small>Soft structure, everyday warmth</small></a></div></section>
-<section class="home-section artisan-feature"><p class="eyebrow">Featured artisan</p><h2>Maker stories are introduced with care.</h2><p>This is a sample disclosure: artisan names and production notes will expand as the catalogue grows.</p><a href="/artisans">Meet the artisans</a></section>
-<section class="home-section assurance-grid"><article><h2>Craft assurances</h2><p>Material, maker, and catalogue information remain connected.</p></article><article><h2>Occasion edit</h2><p>Wedding, gathering, gift, and everyday ceremony.</p></article><article><h2>Shipping, returns &amp; care</h2><p>Plain-language guidance arrives with each weave.</p></article></section>
-<section class="newsletter-invitation"><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p></section>
+<section class="trust-strip" aria-label="Catalogue assurances">
+  <p><strong>Material named</strong><span>Muga, Pat, and Eri</span></p>
+  <p><strong>Maker context</strong><span>Shared when verified</span></p>
+  <p class="trust-strip__lower trust-strip__new-row"><strong>Availability shown</strong><span>Clear catalogue status</span></p>
+  <p class="trust-strip__lower"><strong>Care guidance</strong><span>Specific to each weave</span></p>
+</section>
+<section class="home-section featured-weaves">
+  <div class="section-heading"><div><p class="eyebrow">Featured weaves</p><h2>Small editions, held in view</h2></div><a href="/shop">Browse full catalogue <span aria-hidden="true">→</span></a></div>
+  {% set product_limit = 4 %}
+  {% include "components/product_grid.html" %}
+</section>
+<section class="home-section material-feature" aria-labelledby="collection-edit-title">
+  <div class="material-feature__copy"><p class="eyebrow">Why Assam silk</p><h2 id="collection-edit-title">Three traditions, one spirit.</h2><p>Muga carries a natural gold. Pat has a luminous clarity. Eri offers a softer, breathable hand. We begin with the material and keep its character present.</p><a class="button button--secondary" href="/pages/silk-guide">Explore our silk guide</a></div>
+  <div class="collection-cards"><a class="muga-card" href="/shop?silk_type=Muga"><span>Muga</span><small>Natural gold, ceremonial ease</small></a><a class="pat-card" href="/shop?silk_type=Pat"><span>Pat</span><small>Light, luminous, precise</small></a><a class="eri-card" href="/shop?silk_type=Eri"><span>Eri</span><small>Soft structure, everyday warmth</small></a></div>
+</section>
+<section class="home-section artisan-feature">
+  <div><p class="eyebrow">Featured artisan</p><h2>Maker stories are introduced with care.</h2><p>This is a sample disclosure: artisan names and production notes will expand as the catalogue grows.</p><a href="/artisans">Meet the artisans <span aria-hidden="true">→</span></a></div>
+  <div class="artisan-feature__study" aria-hidden="true"><span>Luit &amp; Loom</span></div>
+</section>
+<section class="newsletter-invitation">
+  <div><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p></div>
+  <div class="newsletter-form" aria-label="Newsletter preview"><label class="visually-hidden" for="newsletter-email">Email address</label><input id="newsletter-email" type="email" placeholder="Your email address" disabled><button type="button" disabled>Notify me</button></div>
+</section>
 {% endblock %}
