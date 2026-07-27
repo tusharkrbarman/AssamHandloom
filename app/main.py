@@ -3,11 +3,16 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from sqlalchemy.ext.asyncio import create_async_engine
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse, Response
 
+from app.catalog.routes import catalog_router
 from app.config import Settings, get_settings
 from app.health import health_router
+from app.storefront.routes import storefront_router
+from app.web import render
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -21,4 +26,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.engine = create_async_engine(resolved.database_url)
     app.include_router(health_router)
+    app.include_router(storefront_router)
+    app.include_router(catalog_router)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        if exc.status_code == 404:
+            return render(request, "errors/404.html", status_code=404)
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        return Response(str(exc.detail), status_code=exc.status_code)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, _: Exception) -> Response:
+        return render(request, "errors/500.html", status_code=500)
+
     return app

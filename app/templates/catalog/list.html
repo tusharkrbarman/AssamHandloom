@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<h1>{% if collection %}{{ collection.title }}{% elif request.url.path == '/search' %}Search{% else %}Shop{% endif %}</h1>
+{% include "components/product_grid.html" %}
+{% endblock %}

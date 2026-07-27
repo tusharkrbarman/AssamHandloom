@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
+
+from app.catalog.repository import CatalogRepository
+from app.catalog.schemas import Page, ProductCard, ProductListQuery
+from app.catalog.service import CatalogService
+from app.db import get_session
+from app.web import is_htmx, render
+
+catalog_router = APIRouter()
+_SORTS = {"featured", "newest", "price_asc", "price_desc"}
+
+
+def _normalise_search(value: str | None) -> str | None:
+    normalised = " ".join((value or "").split())
+    return normalised or None
+
+
+def _positive_int(value: str | None, default: int) -> int:
+    try:
+        return max(1, int(value)) if value is not None else default
+    except ValueError:
+        return default
+
+
+def parse_product_query(request: Request, *, api: bool = False) -> ProductListQuery:
+    """Parse stable public catalogue query parameters from one URL."""
+
+    sort = request.query_params.get("sort", "featured")
+    if sort not in _SORTS:
+        if api:
+            raise HTTPException(status_code=422, detail="Invalid sort value")
+        sort = "featured"
+    page_size = min(24, _positive_int(request.query_params.get("page_size"), 12))
+    return ProductListQuery(
+        search=_normalise_search(
+            request.query_params.get("search") or request.query_params.get("q")
+        ),
+        silk_types=tuple(request.query_params.getlist("silk_type")),
+        colours=tuple(request.query_params.getlist("colour")),
+        occasions=tuple(request.query_params.getlist("occasion")),
+        available_only=request.query_params.get("available_only", "").lower()
+        in {"1", "true", "yes", "on"},
+        sort=sort,  # type: ignore[arg-type]
+        page=_positive_int(request.query_params.get("page"), 1),
+        page_size=page_size,
+    )
+
+
+def _service(session: AsyncSession) -> CatalogService:
+    return CatalogService(CatalogRepository(session))
+
+
+def _page_payload(page: Page[ProductCard]) -> dict[str, object]:
+    return {
+        "items": [asdict(card) for card in page.items],
+        "page": page.page,
+        "page_size": page.page_size,
+        "total": page.total,
+        "pages": page.total_pages,
+    }
+
+
+async def product_page(
+    request: Request, session: AsyncSession, *, api: bool = False
+) -> tuple[ProductListQuery, Page[ProductCard]]:
+    query = parse_product_query(request, api=api)
+    page = await _service(session).list_products(
+        query, request.app.state.settings.catalogue_preview_enabled
+    )
+    return query, page
+
+
+@catalog_router.get("/api/v1/catalog/products")
+async def product_api(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, object]:
+    _, page = await product_page(request, session, api=True)
+    return _page_payload(page)
+
+
+@catalog_router.get("/shop")
+@catalog_router.get("/search")
+async def shop(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
+    query, page = await product_page(request, session)
+    template = "components/product_grid.html" if is_htmx(request) else "catalog/list.html"
+    return render(request, template, {"page": page, "query": query})
+
+
+@catalog_router.get("/collections/{slug}")
+async def collection(
+    slug: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> Response:
+    query = parse_product_query(request)
+    collections = await _service(session).list_collections(
+        request.app.state.settings.catalogue_preview_enabled
+    )
+    selected = next((item for item in collections if item.slug == slug), None)
+    if selected is None:
+        raise HTTPException(status_code=404)
+    service = _service(session)
+    cards = [
+        card
+        for member in selected.collection_products
+        if (card := service.to_product_card(
+            member.product, request.app.state.settings.catalogue_preview_enabled
+        )) is not None
+    ]
+    cards = _filter_collection_cards(cards, query)
+    total = len(cards)
+    start = (query.page - 1) * query.page_size
+    page = Page(cards[start : start + query.page_size], total, query.page, query.page_size)
+    template = "components/product_grid.html" if is_htmx(request) else "catalog/list.html"
+    return render(request, template, {"page": page, "query": query, "collection": selected})
+
+
+def _filter_collection_cards(
+    cards: list[ProductCard], query: ProductListQuery
+) -> list[ProductCard]:
+    filtered = [
+        card
+        for card in cards
+        if (not query.search or query.search.lower() in card.title.lower())
+        and (not query.silk_types or card.silk_type in query.silk_types)
+        and (not query.available_only or card.available)
+    ]
+    if query.sort == "price_asc":
+        return sorted(filtered, key=lambda card: (card.price_minor, card.slug))
+    if query.sort == "price_desc":
+        return sorted(filtered, key=lambda card: (-card.price_minor, card.slug))
+    return filtered
+
+
+@catalog_router.get("/products/{slug}")
+async def product(
+    slug: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> Response:
+    detail = await _service(session).get_product_by_slug(
+        slug, request.app.state.settings.catalogue_preview_enabled
+    )
+    if detail is None:
+        raise HTTPException(status_code=404)
+    return render(request, "catalog/product.html", {"product": detail})

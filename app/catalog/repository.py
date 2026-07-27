@@ -132,9 +132,15 @@ class CatalogRepository:
             select(Collection)
             .where(Collection.publication_state.in_(visible_states))
             .options(
-                selectinload(Collection.collection_products).selectinload(
-                    CollectionProduct.product
-                ),
+                selectinload(Collection.collection_products)
+                .selectinload(CollectionProduct.product)
+                .selectinload(Product.artisan),
+                selectinload(Collection.collection_products)
+                .selectinload(CollectionProduct.product)
+                .selectinload(Product.media),
+                selectinload(Collection.collection_products)
+                .selectinload(CollectionProduct.product)
+                .selectinload(Product.variants),
                 with_loader_criteria(
                     CollectionProduct,
                     CollectionProduct.product.has(visible_product),
