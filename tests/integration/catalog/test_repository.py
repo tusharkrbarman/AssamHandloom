@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -166,6 +166,53 @@ async def test_collections_follow_preview_rules_and_display_order(session: Async
 
     assert [collection.slug for collection in disabled] == ["published"]
     assert [collection.slug for collection in enabled] == ["preview", "published"]
+
+
+@pytest.mark.anyio
+async def test_collection_members_follow_the_same_publication_rules(session: AsyncSession) -> None:
+    collection = Collection(
+        id=uuid.uuid4(),
+        slug="featured",
+        title="Featured",
+        publication_state=PublicationState.PUBLISHED,
+    )
+    published = _product("published")
+    preview = _product("preview", state=PublicationState.PREVIEW)
+    draft = _product("draft", state=PublicationState.DRAFT)
+    collection.collection_products.extend(
+        [
+            CollectionProduct(product=published, display_order=0),
+            CollectionProduct(product=preview, display_order=1),
+            CollectionProduct(product=draft, display_order=2),
+        ]
+    )
+    session.add(collection)
+    await session.commit()
+
+    repository = CatalogRepository(session)
+    disabled = await repository.list_collections(preview_enabled=False)
+    assert [member.product.slug for member in disabled[0].collection_products] == ["published"]
+
+    enabled = await repository.list_collections(preview_enabled=True)
+    assert [member.product.slug for member in enabled[0].collection_products] == [
+        "published",
+        "preview",
+    ]
+
+
+@pytest.mark.anyio
+async def test_postgresql_rejects_lowercase_currency_when_model_validation_is_bypassed(
+    session: AsyncSession,
+) -> None:
+    product = _product("currency-check")
+    session.add(product)
+    await session.commit()
+
+    with pytest.raises(IntegrityError):
+        await session.execute(
+            text("UPDATE variants SET currency = 'inr' WHERE id = :variant_id"),
+            {"variant_id": product.variants[0].id},
+        )
 
 
 @pytest.mark.anyio

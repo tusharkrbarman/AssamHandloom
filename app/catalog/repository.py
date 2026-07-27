@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
@@ -28,14 +28,8 @@ class CatalogRepository:
     def _products_with_visible_variants(
         query: ProductListQuery, preview_enabled: bool
     ) -> Select[tuple[Product]]:
-        visible_states = CatalogRepository._visible_states(preview_enabled)
-        visible_variant = (
-            select(Variant.id)
-            .where(Variant.product_id == Product.id, Variant.publication_state.in_(visible_states))
-            .exists()
-        )
         statement = select(Product).where(
-            Product.publication_state.in_(visible_states), visible_variant
+            CatalogRepository._visible_product_clause(preview_enabled)
         )
 
         if query.search:
@@ -47,6 +41,7 @@ class CatalogRepository:
         if query.occasions:
             statement = statement.where(Product.occasion.in_(query.occasions))
         if query.available_only:
+            visible_states = CatalogRepository._visible_states(preview_enabled)
             statement = statement.where(
                 select(Variant.id)
                 .where(
@@ -57,6 +52,16 @@ class CatalogRepository:
                 .exists()
             )
         return statement
+
+    @staticmethod
+    def _visible_product_clause(preview_enabled: bool) -> ColumnElement[bool]:
+        visible_states = CatalogRepository._visible_states(preview_enabled)
+        visible_variant = (
+            select(Variant.id)
+            .where(Variant.product_id == Product.id, Variant.publication_state.in_(visible_states))
+            .exists()
+        )
+        return and_(Product.publication_state.in_(visible_states), visible_variant)
 
     async def list_products(self, query: ProductListQuery, preview_enabled: bool) -> Page[Product]:
         """Return visible products and a stable total for the requested page."""
@@ -122,12 +127,21 @@ class CatalogRepository:
         """Return visible collections in their explicit storefront order."""
 
         visible_states = self._visible_states(preview_enabled)
+        visible_product = self._visible_product_clause(preview_enabled)
         statement = (
             select(Collection)
             .where(Collection.publication_state.in_(visible_states))
             .options(
-                selectinload(Collection.collection_products).selectinload(CollectionProduct.product)
+                selectinload(Collection.collection_products).selectinload(
+                    CollectionProduct.product
+                ),
+                with_loader_criteria(
+                    CollectionProduct,
+                    CollectionProduct.product.has(visible_product),
+                    include_aliases=True,
+                ),
             )
             .order_by(Collection.display_order.asc(), Collection.id.asc())
+            .execution_options(populate_existing=True)
         )
         return list((await self._session.scalars(statement)).unique().all())

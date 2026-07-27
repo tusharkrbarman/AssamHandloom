@@ -77,3 +77,72 @@ Success: no issues found in 10 source files
 
 No known functional concerns. Price formatting currently treats stored currency values as two-decimal
 minor units; an ISO-currency exponent registry remains intentionally deferred with localization.
+
+## Fix round 1/5
+
+### Findings addressed
+
+- `list_collections()` now filters collection membership through the same product-and-visible-variant
+  publication predicate as product queries. A published collection therefore cannot return draft
+  members, and preview members appear only when preview is enabled.
+- Preview products now explicitly set the public sample marker even when no artisan is assigned or
+  the associated artisan is not itself a sample record. Artisan sample status continues to mark
+  published sample products.
+- `Variant.currency` now validates against the embedded ISO 4217 code registry at the SQLAlchemy
+  write boundary. The PostgreSQL migration adds a `^[A-Z]{3}$` check constraint as a defence in
+  depth safeguard for writes that bypass the model.
+
+### Regression evidence
+
+#### RED
+
+Before the fix, ran:
+
+```text
+TEST_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:55432/luit_loom_test
+.venv\\Scripts\\python.exe -m pytest tests/unit/catalog/test_service.py tests/integration/catalog/test_repository.py -q
+```
+
+Result: 4 failed, 15 passed. The failures demonstrated the missing preview sample label, absent
+ISO write-boundary validation, visible preview/draft collection members, and absent PostgreSQL
+lowercase-currency protection.
+
+#### GREEN
+
+Focused regressions after the implementation:
+
+```text
+19 passed in 0.69s
+```
+
+Final verification:
+
+```text
+ruff check app/catalog migrations/versions/0002_catalogue.py tests/unit/catalog tests/integration/catalog
+All checks passed!
+
+mypy app
+Success: no issues found in 10 source files
+
+pytest tests/unit/catalog tests/integration/catalog -q
+19 passed in 0.80s
+```
+
+### Files changed
+
+- `app/catalog/models.py`
+- `app/catalog/repository.py`
+- `app/catalog/service.py`
+- `migrations/versions/0002_catalogue.py`
+- `tests/unit/catalog/test_service.py`
+- `tests/integration/catalog/test_repository.py`
+
+### Self-review
+
+- The collection association query filters at the association level, so hidden products are not
+  returned as collection members rather than merely being represented as unloaded relations.
+- The preview label is derived from product publication state, independent of artisan identity.
+- The model accepts only uppercase codes in the supplied ISO 4217 registry; PostgreSQL protects
+  the three-character uppercase format if a write bypasses SQLAlchemy.
+- The revised `0002_catalogue` migration remains consistent with the ORM because Task 2 is
+  unreleased, and each PostgreSQL integration run applies it to a fresh isolated schema.

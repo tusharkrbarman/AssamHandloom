@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.sql import func
 
 from app.db import Base
@@ -36,6 +36,18 @@ publication_state_type = SqlEnum(
     native_enum=False,
     values_callable=lambda states: [state.value for state in states],
     create_constraint=True,
+)
+
+ISO_4217_CODES = frozenset(
+    "AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BOV BRL "
+    "BSD BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUC CUP CVE CZK DJF "
+    "DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HRK HTG "
+    "HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP "
+    "LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN "
+    "NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG "
+    "SEK SGD SHP SLE SLL SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS "
+    "UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAF XAG XAU XBA XBB XBC XBD XCD "
+    "XDR XOF XPD XPF XPT XSU XTS XUA XXX YER ZAR ZMW ZWL".split()
 )
 
 
@@ -118,6 +130,10 @@ class Variant(Timestamped, Base):
             "weight_grams IS NULL OR weight_grams >= 0", name="ck_variants_weight_non_negative"
         ),
         CheckConstraint("inventory_quantity >= 0", name="ck_variants_inventory_non_negative"),
+        CheckConstraint(
+            "currency ~ '^[A-Z]{3}$'",
+            name="ck_variants_currency_uppercase_format",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -143,6 +159,14 @@ class Variant(Timestamped, Base):
     )
 
     product: Mapped[Product] = relationship(back_populates="variants")
+
+    @validates("currency")
+    def validate_currency(self, _: str, value: str) -> str:
+        """Require a current, uppercase ISO 4217 currency code at the write boundary."""
+
+        if value not in ISO_4217_CODES:
+            raise ValueError("currency must be an uppercase ISO 4217 code")
+        return value
 
 
 class Collection(Timestamped, Base):

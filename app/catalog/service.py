@@ -41,7 +41,9 @@ class CatalogService:
         variant = min(visible_variants, key=lambda candidate: candidate.price_minor)
         primary_media = self._primary_media(visible.media)
         artisan = visible.artisan
-        is_sample = artisan.is_sample if artisan is not None else False
+        is_sample = visible.publication_state is PublicationState.PREVIEW or (
+            artisan.is_sample if artisan is not None else False
+        )
         return ProductCard(
             slug=visible.slug,
             title=visible.title,
@@ -61,7 +63,9 @@ class CatalogService:
         if visible is None:
             return None
         artisan = visible.artisan
-        is_sample = artisan.is_sample if artisan is not None else False
+        is_sample = visible.publication_state is PublicationState.PREVIEW or (
+            artisan.is_sample if artisan is not None else False
+        )
         variants = tuple(
             ProductVariant(
                 sku=variant.sku,

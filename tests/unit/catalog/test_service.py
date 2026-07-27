@@ -118,6 +118,18 @@ def test_preview_records_are_visible_as_samples_when_preview_is_enabled(
     assert card.sample_label == "Sample"
 
 
+def test_preview_product_is_labelled_as_sample_without_an_artisan(
+    catalog_service: CatalogService,
+) -> None:
+    product = _product(PublicationState.PREVIEW, PublicationState.PREVIEW)
+
+    card = catalog_service.to_product_card(product, preview_enabled=True)
+
+    assert card is not None
+    assert card.is_sample is True
+    assert card.sample_label == "Sample"
+
+
 def test_artisan_sample_status_propagates_to_product_card(catalog_service: CatalogService) -> None:
     product = _product(PublicationState.PUBLISHED, PublicationState.PUBLISHED)
     product.artisan = ArtisanProfile(
@@ -131,3 +143,16 @@ def test_artisan_sample_status_propagates_to_product_card(catalog_service: Catal
     assert card is not None
     assert card.is_sample is True
     assert card.sample_label == "Sample"
+
+
+def test_variant_rejects_a_currency_that_is_not_an_iso_4217_code() -> None:
+    with pytest.raises(ValueError, match="ISO 4217"):
+        Variant(
+            id=uuid.uuid4(),
+            product_id=uuid.uuid4(),
+            sku="invalid-currency",
+            price_minor=1890000,
+            currency="inr",
+            publication_state=PublicationState.PUBLISHED,
+            inventory_quantity=1,
+        )

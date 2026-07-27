@@ -89,6 +89,10 @@ def upgrade() -> None:
             "weight_grams IS NULL OR weight_grams >= 0", name="ck_variants_weight_non_negative"
         ),
         sa.CheckConstraint("inventory_quantity >= 0", name="ck_variants_inventory_non_negative"),
+        sa.CheckConstraint(
+            "currency ~ '^[A-Z]{3}$'",
+            name="ck_variants_currency_uppercase_format",
+        ),
         sa.ForeignKeyConstraint(["product_id"], ["products.id"], ondelete="CASCADE"),
         sa.UniqueConstraint("sku", name="uq_variants_sku"),
     )
