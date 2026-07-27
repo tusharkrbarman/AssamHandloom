@@ -11,7 +11,9 @@ from app.seed import CatalogueValidationError, validate_catalogue
 
 def _catalogue() -> dict[str, Any]:
     return json.loads(
-        (Path(__file__).parents[2] / "data" / "river-reed-gold.json").read_text(encoding="utf-8")
+        (Path(__file__).parents[2] / "app" / "data" / "river-reed-gold.json").read_text(
+            encoding="utf-8"
+        )
     )
 
 

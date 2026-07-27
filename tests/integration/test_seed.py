@@ -28,7 +28,7 @@ from app.seed import CatalogueValidationError, SeedCollisionError, load_sample_c
 
 @pytest.fixture
 def catalogue_path() -> Path:
-    return Path(__file__).parents[2] / "data" / "river-reed-gold.json"
+    return Path(__file__).parents[2] / "app" / "data" / "river-reed-gold.json"
 
 
 @pytest.fixture
@@ -214,7 +214,7 @@ async def test_seeded_records_are_complete_and_explicitly_sample(
 def _mutated_catalogue(
     tmp_path: Path, mutate: Callable[[dict[str, Any]], object]
 ) -> Path:
-    source_path = Path(__file__).parents[2] / "data" / "river-reed-gold.json"
+    source_path = Path(__file__).parents[2] / "app" / "data" / "river-reed-gold.json"
     catalogue = json.loads(source_path.read_text())
     mutate(catalogue)
     path = tmp_path / "mutated-catalogue.json"

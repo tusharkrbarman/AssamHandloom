@@ -45,3 +45,8 @@ jobs:
         run: .venv/bin/python -m mypy app
       - name: Build deployment image
         run: docker build --tag luit-and-loom:ci .
+      - name: Verify packaged catalogue
+        run: >-
+          docker run --rm --entrypoint python luit-and-loom:ci -c
+          "from pathlib import Path; import app.seed;
+          assert (Path(app.seed.__file__).parent / 'data' / 'river-reed-gold.json').is_file()"

@@ -556,7 +556,7 @@ async def _run() -> None:
     try:
         async with AsyncSession(engine, expire_on_commit=False) as session:
             result = await load_sample_catalogue(
-                session, Path(__file__).parents[1] / "data" / "river-reed-gold.json"
+                session, Path(__file__).parent / "data" / "river-reed-gold.json"
             )
     finally:
         await engine.dispose()
