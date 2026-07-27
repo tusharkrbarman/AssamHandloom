@@ -1,7 +1,8 @@
 <article class="product-card">
-  <a class="product-card__image" href="/products/{{ product.slug }}" aria-label="View {{ product.title }}">
-    {% if product.primary_image %}
-      <img src="{{ product.primary_image }}" alt="{{ product.title }} in {{ product.silk_type }} silk" width="720" height="900" loading="lazy">
+  <a class="product-card__image{% if product.media | length > 1 %} has-secondary-image{% endif %}" href="/products/{{ product.slug }}" aria-label="View {{ product.title }}">
+    {% if product.primary_image and product.media %}
+      <img class="product-card__primary-image" src="{{ product.media[0].url }}" alt="{{ product.media[0].alt_text or (product.title ~ ' in ' ~ product.silk_type ~ ' silk') }}" width="720" height="900" loading="lazy">
+      {% if product.media | length > 1 %}<img class="product-card__secondary-image" data-secondary-image src="{{ product.media[1].url }}" alt="" aria-hidden="true" width="720" height="900" loading="lazy">{% endif %}
     {% else %}
       <span class="textile-placeholder" role="img" aria-label="Textile-colour study for {{ product.title }}">Textile-colour study</span>
     {% endif %}

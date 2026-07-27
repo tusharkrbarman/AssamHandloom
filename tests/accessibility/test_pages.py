@@ -26,6 +26,21 @@ async def test_public_pages_keep_one_page_heading_and_labelled_images(
 
 
 @pytest.mark.anyio
+async def test_product_gallery_preserves_source_alt_and_loading_priority(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    response = await app_client.get("/products/luit-dawn")
+    document = html.fromstring(response.text)
+    gallery_images = document.cssselect(".product-detail__gallery img")
+
+    assert len(gallery_images) == 2
+    assert gallery_images[0].get("alt") == "Muga silk in a warm red river-line weave"
+    assert gallery_images[0].get("loading") is None
+    assert gallery_images[1].get("alt") == "Second Muga silk detail"
+    assert gallery_images[1].get("loading") == "lazy"
+
+
+@pytest.mark.anyio
 async def test_shop_filter_controls_have_labels_and_grid_is_a_live_region(
     app_client: AsyncClient, seeded_catalog: None
 ) -> None:
@@ -35,6 +50,21 @@ async def test_shop_filter_controls_have_labels_and_grid_is_a_live_region(
     form = document.cssselect("form.catalogue-filters")
     assert len(form) == 1
     assert form[0].get("aria-label")
-    assert len(document.cssselect('#product-grid[aria-live="polite"]')) == 1
+    assert len(document.cssselect('#catalogue-results[aria-live="polite"]')) == 1
     for control in form[0].cssselect("input, select"):
         assert control.get("id") or control.get("aria-label") or control.get("aria-labelledby")
+
+
+@pytest.mark.anyio
+async def test_secondary_card_image_is_decorative_and_hover_scoped(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    response = await app_client.get("/shop")
+    document = html.fromstring(response.text)
+    css = (await app_client.get("/static/css/site.css")).text
+
+    secondary = document.cssselect("[data-secondary-image]")
+    assert len(secondary) == 1
+    assert secondary[0].get("aria-hidden") == "true"
+    assert secondary[0].get("alt") == ""
+    assert "@media (hover: hover) and (pointer: fine)" in css

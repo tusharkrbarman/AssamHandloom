@@ -37,6 +37,10 @@ async def test_product_page_exposes_commerce_and_provenance_facts(
     ):
         assert text in response.text
     assert 'disabled' in response.text
+    assert "Verification pending" in response.text
+    assert "General guidance" in response.text
+    assert "River-line interpretation" not in response.text
+    assert "Assam, India" not in response.text
 
 
 @pytest.mark.anyio
@@ -50,7 +54,7 @@ async def test_shop_no_results_offers_recovery_and_get_filters_are_shareable(
     assert 'href="/shop"' in response.text
     assert 'method="get"' in response.text
     assert 'hx-push-url="true"' in response.text
-    assert 'hx-target="#product-grid"' in response.text
+    assert 'hx-target="#catalogue-results"' in response.text
 
 
 @pytest.mark.anyio
@@ -64,6 +68,37 @@ async def test_cards_have_honest_unavailable_and_optional_image_states(
     assert "Available" in response.text
     assert "Sample catalogue" in response.text
     assert 'loading="lazy"' in response.text
+    assert "Currently unavailable" in response.text
+    assert 'data-secondary-image' in response.text
+
+
+@pytest.mark.anyio
+async def test_htmx_results_region_updates_cards_and_pagination_together(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    response = await app_client.get(
+        "/shop?silk_type=Muga&page_size=1&search=Luit",
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert response.text.startswith('<section id="catalogue-results"')
+    assert "Luit Dawn" in response.text
+    assert "Muga Evening" not in response.text
+    assert "Page 1 of" not in response.text
+    assert "<!doctype html>" not in response.text.lower()
+
+
+@pytest.mark.anyio
+async def test_filter_form_exposes_supported_catalogue_filters(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    response = await app_client.get("/shop")
+
+    assert response.status_code == 200
+    for control in ("colour", "occasion", "silk_type", "sort", "price"):
+        assert control in response.text
+    assert "Weave (silk type)" in response.text
 
 
 @pytest.mark.anyio

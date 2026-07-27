@@ -4,7 +4,14 @@ from collections.abc import Sequence
 
 from app.catalog.models import Collection, Product, ProductMedia, PublicationState, Variant
 from app.catalog.repository import CatalogRepository
-from app.catalog.schemas import Page, ProductCard, ProductDetail, ProductListQuery, ProductVariant
+from app.catalog.schemas import (
+    Page,
+    ProductCard,
+    ProductDetail,
+    ProductListQuery,
+    ProductVariant,
+)
+from app.catalog.schemas import ProductMedia as PublicProductMedia
 
 
 class CatalogService:
@@ -53,6 +60,7 @@ class CatalogService:
             currency=variant.currency,
             available=any(candidate.inventory_quantity > 0 for candidate in visible_variants),
             primary_image=primary_media.url if primary_media is not None else None,
+            media=self._public_media(visible.media),
             is_sample=is_sample,
         )
 
@@ -86,7 +94,7 @@ class CatalogService:
             colour=visible.colour,
             occasion=visible.occasion,
             artisan_name=artisan.display_name if artisan is not None else None,
-            media=tuple(media.url for media in visible.media),
+            media=self._public_media(visible.media),
             variants=variants,
             is_sample=is_sample,
             sample_label="Sample" if is_sample else None,
@@ -133,3 +141,15 @@ class CatalogService:
     @staticmethod
     def _primary_media(media: Sequence[ProductMedia]) -> ProductMedia | None:
         return next((item for item in media if item.is_primary), media[0] if media else None)
+
+    @staticmethod
+    def _public_media(media: Sequence[ProductMedia]) -> tuple[PublicProductMedia, ...]:
+        """Expose ordered media, keeping the designated primary image first."""
+
+        ordered = sorted(media, key=lambda item: (not item.is_primary, item.display_order))
+        return tuple(
+            PublicProductMedia(
+                url=item.url, alt_text=item.alt_text, display_order=item.display_order
+            )
+            for item in ordered
+        )

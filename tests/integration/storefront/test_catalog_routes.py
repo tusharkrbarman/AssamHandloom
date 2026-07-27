@@ -126,15 +126,30 @@ def _product(
         )
     )
     if slug == "luit-dawn":
-        product.media.append(
-            ProductMedia(
+        media_url = (
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
+            "width='2' height='2'/%3E"
+        )
+        product.media.extend(
+            [
+                ProductMedia(
                 id=uuid.uuid4(),
                 product_id=product.id,
-                url="/static/images/luit-dawn.jpg",
+                    url=media_url,
                 alt_text="Muga silk in a warm red river-line weave",
                 is_primary=True,
-            )
+                ),
+                ProductMedia(
+                id=uuid.uuid4(),
+                product_id=product.id,
+                    url=media_url,
+                alt_text="Second Muga silk detail",
+                display_order=1,
+                ),
+            ]
         )
+    if slug == "kopou-ivory":
+        product.variants[0].inventory_quantity = 0
     return product
 
 

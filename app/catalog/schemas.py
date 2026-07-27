@@ -38,6 +38,7 @@ class ProductCard:
     currency: str
     available: bool
     primary_image: str | None
+    media: tuple[ProductMedia, ...] = ()
     is_sample: bool = False
 
     @property
@@ -69,6 +70,15 @@ class ProductVariant:
 
 
 @dataclass(frozen=True)
+class ProductMedia:
+    """Ordered public media with the source description preserved."""
+
+    url: str
+    alt_text: str | None
+    display_order: int
+
+
+@dataclass(frozen=True)
 class ProductDetail:
     """The public data required for one product detail page."""
 
@@ -79,7 +89,7 @@ class ProductDetail:
     colour: str | None
     occasion: str | None
     artisan_name: str | None
-    media: tuple[str, ...]
+    media: tuple[ProductMedia, ...]
     variants: tuple[ProductVariant, ...]
     is_sample: bool
     sample_label: str | None
