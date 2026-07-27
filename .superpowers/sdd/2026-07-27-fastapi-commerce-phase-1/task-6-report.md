@@ -134,3 +134,19 @@ Success: no issues found in 16 source files # mypy
 ### Concerns
 
 - PostgreSQL canonical indexes close the logical-duplicate race even when another session writes between loader preflight and mutation. The test suite directly exercises the invariant; production contention results in one writer succeeding and the other receiving the explicit collision outcome.
+
+## Fix round 4/5 — operator-safe canonical-index migration
+
+### GREEN evidence
+
+`0004_canonical_catalogue_keys` was downgraded to `0003_sample_catalogue_ownership` and upgraded back to head successfully against PostgreSQL. Ruff and mypy remain clean.
+
+### Self-review
+
+- Before any index DDL, `0004` queries deterministic, bounded (10 values per kind) canonical duplicate groups for `lower(products.slug)` and `upper(variants.sku)`.
+- If duplicates exist, it raises an actionable diagnostic naming the affected kind and canonical values, instructing operators to resolve/rename the records and rerun. It does not merge or delete live data.
+- Because this check precedes both `create_index` calls within Alembic's transactional migration, a rejected upgrade creates no partial canonical index.
+
+### Concerns
+
+- This change intentionally blocks an upgrade until an operator resolves historical duplicate business data; that safety boundary is preferable to automatic catalogue rewrites.
