@@ -10,6 +10,17 @@ from starlette.responses import Response
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _template_context(request: Request) -> dict[str, str]:
+    """Provide trusted, request-scoped presentation values to templates."""
+
+    origin = str(request.app.state.settings.public_base_url).rstrip("/")
+    path = "/" + request.url.path.lstrip("/")
+    return {"canonical_url": f"{origin}{path}"}
+
+
+templates.context_processors.append(_template_context)
+
+
 def is_htmx(request: Request) -> bool:
     """Return true only for an explicit HTMX request header."""
 
