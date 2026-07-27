@@ -46,6 +46,7 @@ operation is idempotent, allowing safe restarts for this single-instance demo.
 - `.dockerignore`: excludes local, Git, test, and cache files from the image.
 - `render.yaml`: free Render web service, free PostgreSQL database, environment
   references, and health check.
+- `.github/workflows/quality.yml`: verifies that the deployment image builds.
 - `app/config.py`: Render database URL normalization and public URL fallback.
 - `tests/integration/test_health.py`: focused configuration compatibility tests.
 - `README.md`: local container check and Render Blueprint deployment steps.
@@ -56,4 +57,3 @@ The change must pass the focused configuration tests, the complete PostgreSQL
 test suite, Ruff, mypy, and a Docker image build. The built image must start
 against PostgreSQL, migrate and seed successfully, and return HTTP 200 from
 `/health/ready` and the storefront home page.
-

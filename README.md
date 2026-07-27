@@ -31,4 +31,29 @@ python -m mypy app
 alembic current
 ```
 
-Continuous integration runs those same checks against PostgreSQL 16. Application containerization is intentionally deferred to the final production-hardening phase; this Phase 1 preview does not add an application Dockerfile or Compose setup.
+Continuous integration runs those same checks against PostgreSQL 16.
+
+## Deploy the preview on Render
+
+The included `render.yaml` creates a free Docker web service and a free
+PostgreSQL database in Singapore:
+
+1. Push this branch to GitHub.
+2. In Render, choose **New > Blueprint** and connect this repository.
+3. Select `render.yaml` and apply the Blueprint.
+4. Wait for `/health/ready` to pass, then open the generated `onrender.com` URL.
+
+The container applies database migrations and idempotently loads the clearly
+labelled sample catalogue before starting the site. Render generates the
+application secret and supplies the database and public URLs; no credentials
+are committed.
+
+Render's free web service sleeps after 15 minutes without traffic and can take
+about a minute to wake. Its free PostgreSQL database expires 30 days after
+creation, so this setup is for a temporary demo rather than a production store.
+
+To check the image locally:
+
+```powershell
+docker build --tag luit-and-loom:render .
+```

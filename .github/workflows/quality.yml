@@ -43,3 +43,5 @@ jobs:
         run: .venv/bin/python -m ruff check app tests migrations
       - name: Type check
         run: .venv/bin/python -m mypy app
+      - name: Build deployment image
+        run: docker build --tag luit-and-loom:ci .

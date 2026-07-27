@@ -110,6 +110,21 @@ def test_settings_rejects_non_postgresql_database_outside_test_environment():
         )
 
 
+def test_settings_accepts_render_database_and_external_urls(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://luit:secret@db:5432/luit_loom")
+    monkeypatch.setenv("SECRET_KEY", "a" * 32)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://luit-and-loom.onrender.com")
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+
+    settings = Settings()
+
+    assert settings.database_url == "postgresql+psycopg://luit:secret@db:5432/luit_loom"
+    assert str(settings.public_base_url) == "https://luit-and-loom.onrender.com/"
+
+
 def test_windows_uses_selector_event_loop_policy_for_psycopg():
     if sys.platform == "win32":
         assert isinstance(
