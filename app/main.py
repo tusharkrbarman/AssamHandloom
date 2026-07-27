@@ -4,6 +4,7 @@ import asyncio
 import sys
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse, Response
@@ -25,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Luit & Loom", version="0.1.0")
     app.state.settings = resolved
     app.state.engine = create_async_engine(resolved.database_url)
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.include_router(health_router)
     app.include_router(storefront_router)
     app.include_router(catalog_router)

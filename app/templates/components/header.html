@@ -1,0 +1,36 @@
+{% from "components/icons.html" import icon %}
+<header class="site-header">
+  <div class="container header-row">
+    <a class="wordmark" href="/" aria-label="Luit and Loom home">Luit <span>&amp;</span> Loom</a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <ul>
+        <li><a href="/shop?sort=newest">New Arrivals</a></li>
+        <li><a href="/shop">Shop</a></li>
+        <li><a href="/shop?silk_type=Muga">Muga Silk</a></li>
+        <li><a href="/shop?silk_type=Pat">Pat Silk</a></li>
+        <li><a href="/shop?silk_type=Eri">Eri Silk</a></li>
+        <li><a href="/collections">Artisans</a></li>
+        <li><a href="/collections">Our Story</a></li>
+        <li><a href="/collections">Journal</a></li>
+      </ul>
+    </nav>
+    <div class="header-utilities">
+      <form class="site-search" role="search" action="/search" method="get">
+        <label for="site-search">Search Luit &amp; Loom</label>
+        <input id="site-search" name="search" type="search" placeholder="Search weaves" autocomplete="off">
+        <button type="submit">Search</button>
+      </form>
+      <span class="utility-placeholder" aria-label="Wishlist. Coming in checkout phase">{{ icon('♡', 'Wishlist') }}<span>Wishlist</span><small>Coming in checkout phase</small></span>
+      <span class="utility-placeholder" aria-label="Cart, zero items. Coming in checkout phase">{{ icon('Bag', 'Cart') }}<span>Cart (0)</span><small>Coming in checkout phase</small></span>
+      <button class="disclosure-button" type="button" data-disclosure-button aria-controls="mobile-navigation" aria-expanded="false">Browse</button>
+    </div>
+  </div>
+  <div id="mobile-navigation" class="mobile-navigation" hidden>
+    <nav class="container" aria-label="Mobile navigation">
+      <a href="/shop">Shop all weaves</a>
+      <a href="/collections">Collections</a>
+      <a href="/search">Search</a>
+    </nav>
+  </div>
+  <button class="disclosure-backdrop" type="button" data-disclosure-backdrop aria-label="Close navigation" hidden></button>
+</header>
