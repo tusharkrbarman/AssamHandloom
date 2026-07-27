@@ -1,0 +1,45 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: luit_loom_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d luit_loom_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/luit_loom_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/luit_loom_test
+      SECRET_KEY: local-ci-key-not-a-production-secret-0000
+      PUBLIC_BASE_URL: http://testserver
+      CATALOGUE_PREVIEW_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install project
+        run: uv sync --all-groups --locked
+      - name: Upgrade database
+        run: .venv/bin/alembic upgrade head
+      - name: Test
+        run: .venv/bin/python -m pytest -q
+      - name: Lint
+        run: .venv/bin/python -m ruff check app tests
+      - name: Type check
+        run: .venv/bin/python -m mypy app
