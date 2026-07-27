@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block page_title %}Luit &amp; Loom{% endblock %}</title>
+  <meta name="description" content="Luit &amp; Loom presents contemporary Assamese handloom with care and clarity.">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/site.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx-2.0.4.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/site.js') }}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  {% include "components/header.html" %}
+  <main id="main-content" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+  {% include "components/footer.html" %}
+</body>
+</html>
