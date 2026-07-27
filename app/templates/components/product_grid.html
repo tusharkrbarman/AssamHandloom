@@ -1,7 +1,6 @@
 <section id="catalogue-results" aria-live="polite" aria-label="Catalogue results">
   <div id="product-grid" class="product-grid">
-    {% set products = page.items[:product_limit] if product_limit is defined else page.items %}
-    {% for product in products %}
+    {% for product in page.items %}
       {% include "components/product_card.html" %}
     {% else %}
       <div class="empty-state">
