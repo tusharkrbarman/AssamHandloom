@@ -17,7 +17,7 @@ The production store is divided into four independently testable implementation 
    - Exit condition: authorized staff can operate the store and issue public authenticity certificates without exposing private evidence.
 
 4. **Production hardening and launch**
-   - Object storage, transactional email, privacy workflows, international configuration, deployment roles, backups, monitoring, security headers, rate limits, operational recovery, accessibility acceptance, and launch evidence.
-   - Exit condition: every launch gate in the approved specification has evidence and the application is deployable without Shopify.
+   - Application containerization, web/worker/scheduler runtime packaging, object storage, transactional email, privacy workflows, international configuration, deployment roles, backups, monitoring, security headers, rate limits, operational recovery, accessibility acceptance, and launch evidence.
+   - Exit condition: every launch gate in the approved specification has evidence and the containerized application is deployable without Shopify.
 
 Each phase receives its own task-level implementation plan and review cycle. Later phases build only on reviewed interfaces from earlier phases.

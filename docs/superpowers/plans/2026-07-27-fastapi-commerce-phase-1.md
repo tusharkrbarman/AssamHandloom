@@ -515,7 +515,7 @@ git commit -m "feat: build artistic public catalogue pages"
 
 ---
 
-### Task 6: Validated sample catalogue, quality automation, and package verification
+### Task 6: Validated sample catalogue and quality automation
 
 **Files:**
 - Create: `data/river-reed-gold.json`
@@ -523,14 +523,12 @@ git commit -m "feat: build artistic public catalogue pages"
 - Create: `tests/unit/test_seed.py`
 - Create: `tests/integration/test_seed.py`
 - Create: `.github/workflows/quality.yml`
-- Create: `Dockerfile`
-- Create: `.dockerignore`
 - Create: `README.md`
 - Modify: `pyproject.toml`
 
 **Interfaces:**
 - Consumes: catalogue models and services.
-- Produces: `load_sample_catalogue(session, path) -> SeedResult`, deterministic 12-product sample data, CI checks, and a runnable web image.
+- Produces: `load_sample_catalogue(session, path) -> SeedResult`, deterministic 12-product sample data, and CI checks.
 
 - [ ] **Step 1: Write failing seed safety tests**
 
@@ -563,21 +561,18 @@ Expected: import fails because seed loader and data do not exist.
 
 Use the twelve approved names and mark every product, artisan, media record, and provenance statement as sample. Products remain visible in `preview` mode but not `published` mode. The seed loader validates the entire input before opening a transaction and updates by stable slug/SKU without duplicating records.
 
-- [ ] **Step 4: Add container and CI verification**
+- [ ] **Step 4: Add continuous integration verification**
 
-The Dockerfile uses a pinned Python 3.12 slim base, a non-root runtime user, dependency caching, and one Uvicorn web command. Worker and scheduler commands are added in later plans.
-
-CI starts PostgreSQL 16, installs the project, runs:
+CI starts PostgreSQL 16, installs the project, and runs:
 
 ```bash
 alembic upgrade head
 python -m pytest -q
 python -m ruff check app tests
 python -m mypy app
-docker build -t luit-and-loom:test .
 ```
 
-No secrets appear in workflow files.
+No secrets appear in workflow files. Application containerization is intentionally deferred to the final production-hardening phase.
 
 - [ ] **Step 5: Run the complete Phase 1 verification**
 
@@ -588,15 +583,14 @@ alembic upgrade head
 python -m pytest -q
 python -m ruff check app tests
 python -m mypy app
-docker build -t luit-and-loom:test .
 ```
 
-Expected: all tests pass with pristine output, static checks succeed, migration is current, and the image builds.
+Expected: all tests pass with pristine output, static checks succeed, and the migration is current.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add data app/seed.py tests .github Dockerfile .dockerignore README.md pyproject.toml
+git add data app/seed.py tests .github README.md pyproject.toml
 git commit -m "feat: add safe sample catalogue and quality automation"
 ```
 
@@ -610,5 +604,5 @@ git commit -m "feat: add safe sample catalogue and quality automation"
 - All filters and pagination work with and without JavaScript.
 - The Luit & Loom brand system is responsive, keyboard accessible, and reduced-motion aware.
 - Sample and placeholder content cannot be mistaken for verified live inventory.
-- Unit, PostgreSQL integration, rendered accessibility, Ruff, mypy, and container-build checks pass.
+- Unit, PostgreSQL integration, rendered accessibility, Ruff, and mypy checks pass.
 - No cart mutation, payment, customer, or staff feature is falsely presented as complete.
