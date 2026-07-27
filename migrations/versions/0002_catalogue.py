@@ -11,6 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.catalog.currencies import iso_4217_check
+
 revision: str = "0002_catalogue"
 down_revision: str | Sequence[str] | None = "0001_initial"
 branch_labels: str | Sequence[str] | None = None
@@ -93,6 +95,7 @@ def upgrade() -> None:
             "currency ~ '^[A-Z]{3}$'",
             name="ck_variants_currency_uppercase_format",
         ),
+        sa.CheckConstraint(iso_4217_check("currency"), name="ck_variants_currency_iso_4217"),
         sa.ForeignKeyConstraint(["product_id"], ["products.id"], ondelete="CASCADE"),
         sa.UniqueConstraint("sku", name="uq_variants_sku"),
     )

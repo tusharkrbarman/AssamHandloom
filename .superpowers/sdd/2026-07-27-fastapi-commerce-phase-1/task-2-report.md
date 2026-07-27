@@ -146,3 +146,66 @@ pytest tests/unit/catalog tests/integration/catalog -q
   the three-character uppercase format if a write bypasses SQLAlchemy.
 - The revised `0002_catalogue` migration remains consistent with the ORM because Task 2 is
   unreleased, and each PostgreSQL integration run applies it to a fresh isolated schema.
+
+## Fix round 2/5
+
+### Finding addressed
+
+The PostgreSQL constraint previously required only an uppercase three-character currency value, so
+a direct or bulk SQL write could store an unknown value such as `ZZZ`. The shared
+`app.catalog.currencies` registry now produces a PostgreSQL `IN (...)` membership constraint. Both
+the ORM model metadata and the unreleased `0002_catalogue` migration use that same source, while
+the existing format constraint remains as a clear companion invariant.
+
+### RED
+
+Before adding the database membership constraint, ran:
+
+```text
+TEST_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:55432/luit_loom_test
+.venv\\Scripts\\python.exe -m pytest tests/integration/catalog/test_repository.py -k unknown_uppercase_currency -q
+
+1 failed, 10 deselected in 0.47s
+```
+
+The direct SQL update to `ZZZ` did not raise `IntegrityError`.
+
+### GREEN
+
+After adding the shared membership predicate to the ORM and migration:
+
+```text
+1 passed, 10 deselected in 0.28s
+```
+
+The integration suite also explicitly persists `INR` and reads it back from PostgreSQL.
+
+Final verification:
+
+```text
+pytest tests/unit/catalog tests/integration/catalog -q
+21 passed in 0.81s
+
+ruff check app/catalog migrations/versions/0002_catalogue.py tests/unit/catalog tests/integration/catalog
+All checks passed!
+
+mypy app
+Success: no issues found in 11 source files
+```
+
+### Files changed
+
+- `app/catalog/currencies.py`
+- `app/catalog/models.py`
+- `migrations/versions/0002_catalogue.py`
+- `tests/integration/catalog/test_repository.py`
+
+### Self-review
+
+- Normal ORM writes remain protected by the same ISO registry as before, and direct/bulk SQL
+  writes are now rejected unless their value is an ISO 4217 member.
+- `INR` persistence is covered explicitly in PostgreSQL integration testing.
+- The generated SQL membership list is deterministic because the shared registry is sorted.
+- Reusing application data from the migration is acceptable here because revision `0002` is
+  explicitly unreleased; once released, registry changes should use a new migration rather than
+  mutate historical DDL behaviour.

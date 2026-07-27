@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import delete, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -213,6 +213,34 @@ async def test_postgresql_rejects_lowercase_currency_when_model_validation_is_by
             text("UPDATE variants SET currency = 'inr' WHERE id = :variant_id"),
             {"variant_id": product.variants[0].id},
         )
+
+
+@pytest.mark.anyio
+async def test_postgresql_rejects_unknown_uppercase_currency_when_model_validation_is_bypassed(
+    session: AsyncSession,
+) -> None:
+    product = _product("unknown-currency-check")
+    session.add(product)
+    await session.commit()
+
+    with pytest.raises(IntegrityError):
+        await session.execute(
+            text("UPDATE variants SET currency = 'ZZZ' WHERE id = :variant_id"),
+            {"variant_id": product.variants[0].id},
+        )
+
+
+@pytest.mark.anyio
+async def test_postgresql_persists_registered_inr_currency(session: AsyncSession) -> None:
+    product = _product("inr-currency-check")
+    session.add(product)
+    await session.commit()
+
+    stored_currency = await session.scalar(
+        select(Variant.currency).where(Variant.id == product.variants[0].id)
+    )
+
+    assert stored_currency == "INR"
 
 
 @pytest.mark.anyio
