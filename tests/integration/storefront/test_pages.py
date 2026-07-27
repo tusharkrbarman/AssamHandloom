@@ -14,7 +14,8 @@ async def test_homepage_leads_to_collection_and_artisan_story(
     response = await app_client.get("/")
 
     assert response.status_code == 200
-    assert "Woven by Assam. Worn with meaning." in response.text
+    headline = " ".join(html.fromstring(response.text).cssselect("main h1")[0].itertext())
+    assert "Woven by Assam. Worn with meaning." == " ".join(headline.split())
     assert 'href="/shop"' in response.text
     assert "Meet the artisans" in response.text
     assert "Why Assam silk" in response.text
