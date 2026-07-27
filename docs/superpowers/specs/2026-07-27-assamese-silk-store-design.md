@@ -1,7 +1,9 @@
 # Luit & Loom — Assamese Silk Store Design
 
 **Date:** 27 July 2026  
-**Status:** Revised design approved in conversation; awaiting written-spec review
+**Status:** Superseded by `2026-07-27-luit-and-loom-fastapi-commerce-design.md`
+
+> This Shopify-based design is retained only as project history. It must not be used for implementation.
 
 ## 1. Purpose
 

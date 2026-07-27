@@ -1,5 +1,7 @@
 # Luit & Loom Shopify Theme Implementation Plan
 
+> **Status:** Superseded. Do not execute this plan. The project no longer uses Shopify; a FastAPI commerce implementation plan will replace it after the new design specification is reviewed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build and launch a bespoke Shopify Online Store 2.0 theme for Luit & Loom, with an artistic Assamese silk storefront, provenance-rich catalogue, real Shopify checkout, inventory, orders, and international-market readiness.
