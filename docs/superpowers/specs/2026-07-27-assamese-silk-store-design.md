@@ -1,7 +1,7 @@
 # Luit & Loom — Assamese Silk Store Design
 
 **Date:** 27 July 2026  
-**Status:** Approved design awaiting written-spec review
+**Status:** Revised design approved in conversation; awaiting written-spec review
 
 ## 1. Purpose
 
@@ -13,17 +13,24 @@ The first release must combine:
 - An artistic, accessible, mobile-first shopping experience
 - Real payments, inventory, orders, fulfilment, and customer accounts
 - Detailed artisan and product provenance
+- Public authenticity certificates and QR-based verification
+- A FastAPI and PostgreSQL companion service for verified provenance
 - International-market, shipping, tax, and customs readiness
-- A Shopify-backed operating model that store staff can manage without code
+- Shopify-backed commerce operations that store staff can manage without code
 
 ## 2. Chosen Approach
 
-The store will use a bespoke Shopify Online Store 2.0 theme. Shopify will own checkout, customer records, product and inventory data, discounts, orders, refunds, fulfilment, and reporting. The custom theme will own presentation, discovery, storytelling, and conversion-focused interactions.
+The store will use a bespoke Shopify Online Store 2.0 theme with a focused FastAPI and PostgreSQL companion service.
+
+Shopify will own checkout, customer records, product and inventory data, discounts, orders, refunds, fulfilment, Markets, and commerce reporting. The custom theme will own presentation, discovery, storytelling, and conversion-focused interactions.
+
+FastAPI will own verified artisan identities, private verification evidence, saree provenance records, public authenticity certificates, QR verification destinations, Shopify webhook processing history, and the audit trail for verified provenance changes. It will not duplicate or replace Shopify commerce.
 
 This approach was selected over:
 
 - A headless Shopify storefront, which provides more front-end freedom but introduces unnecessary operational and maintenance complexity for the first release.
 - A customized marketplace theme, which launches faster but is less capable of expressing a distinctive Assamese craft identity.
+- A broad custom Python commerce backend, which would duplicate secure Shopify capabilities and create inventory, payment, and order-synchronization risk.
 
 ## 3. Brand System
 
@@ -202,6 +209,8 @@ Shopify will manage:
 
 The theme will not collect, transmit, or store raw card data.
 
+FastAPI will not calculate prices, reserve or change inventory, process payments, create a separate checkout, issue Shopify refunds, or become the system of record for Shopify orders.
+
 ### 6.2 Product data model
 
 Standard Shopify product data will cover title, description, media, price, compare-at price, SKU, barcode, weight, inventory, and variants.
@@ -226,7 +235,115 @@ Product metafields will cover:
 - Country of origin
 - Harmonized System code
 
-Artisans will be modeled as structured Shopify metaobjects so one artisan profile can be reused across multiple products and rendered in product pages and the artisans directory.
+Artisans will be projected into structured Shopify metaobjects so one approved public profile can be reused across multiple products and rendered in product pages and the artisans directory. FastAPI remains authoritative for artisan verification status, consent evidence, provenance approval, and certificate issuance. Only approved public fields are copied to Shopify.
+
+### 6.3 Source-of-truth boundaries
+
+| Data | Authoritative system | Other-system use |
+| --- | --- | --- |
+| Products, variants, prices, and collections | Shopify | FastAPI stores Shopify identifiers only when linking provenance |
+| Inventory and availability | Shopify | FastAPI does not calculate or change inventory |
+| Customers, checkout, payments, and orders | Shopify | FastAPI stores the minimum Shopify order reference needed for certificate workflows |
+| Public artisan display profile | FastAPI after verification | Approved fields are projected to a Shopify metaobject |
+| Private artisan identity and consent evidence | FastAPI | Never copied to Shopify storefront data |
+| Saree provenance and verification state | FastAPI | Approved public facts are projected to Shopify metafields or requested by the theme |
+| Authenticity certificate and revocation state | FastAPI | Shopify may link to the public verification URL |
+| Webhook delivery and processing state | FastAPI | Shopify remains the event source |
+
+Updates must flow in one direction wherever possible. A verified FastAPI record may publish approved display fields to Shopify, but changes in Shopify must not silently overwrite verified identity, evidence, certificate, or audit data.
+
+## 7. FastAPI Companion Service
+
+### 7.1 Responsibilities
+
+The companion service will provide:
+
+- Verified artisan identity and consent records
+- Saree provenance records linked to Shopify products and variants
+- Permanent authenticity certificate numbers
+- Public certificate-verification responses and QR destinations
+- Shopify webhook verification, deduplication, persistence, processing, and replay
+- Links between Shopify products or orders and approved provenance
+- Append-only audit events for verified-record changes
+
+The first release will not include custom recommendations, a general analytics warehouse, a separate commerce admin, or a headless storefront gateway.
+
+### 7.2 Data model
+
+PostgreSQL will contain focused records:
+
+- **Artisan:** public name, region, biography, craft speciality, portrait reference, verification state, and timestamps.
+- **Artisan evidence:** private consent and verification evidence, reviewer reference, verification result, and timestamps.
+- **Provenance:** Shopify product and optional variant reference, artisan reference, silk type, weaving region, motif, production dates, verification state, and timestamps.
+- **Certificate:** permanent certificate number, public lookup slug, provenance reference, QR destination, issue state, issued time, optional Shopify order reference, and revocation reason.
+- **Shopify event:** Shopify event ID, topic, shop identity, payload hash, processing state, attempt count, received time, and processing timestamps.
+- **Audit event:** actor, action, record type, record identifier, before/after change summary, and timestamp.
+
+Verified provenance and certificate history will not be silently deleted or rewritten. Corrections create auditable changes. Certificates can be revoked with a public explanation that does not expose private evidence.
+
+### 7.3 API surface
+
+Initial public endpoints:
+
+- `GET /api/v1/certificates/{code}` returns the public authenticity status and approved provenance.
+- `GET /api/v1/products/{shopify_product_id}/provenance` returns public provenance for the Shopify storefront.
+- `GET /health/live` reports that the process is running.
+- `GET /health/ready` reports whether required dependencies are ready.
+
+Private administrative endpoints create, review, verify, revoke, and audit artisan, provenance, and certificate records. They require staff authentication through an OpenID Connect provider and role-based authorization. The first release exposes the protected API but does not build a separate custom admin dashboard.
+
+Public responses will not expose personal contact information, identity documents, consent evidence, internal notes, webhook payloads, or staff audit details.
+
+### 7.4 Shopify webhooks
+
+Shopify sends signed webhooks for the selected product, order, refund, cancellation, and deletion events. FastAPI must validate the Shopify HMAC signature against the untouched raw request body before parsing or storing the payload.
+
+For each valid event:
+
+1. Record the Shopify event ID, topic, shop, and payload hash.
+2. Acknowledge a duplicate event without processing it twice.
+3. Persist the event and return promptly.
+4. Let a separate worker claim and process the record.
+5. Retry transient failures with bounded backoff.
+6. Preserve permanently failed events for authorized investigation and replay.
+
+Customer-data access, redaction, and shop-deletion webhooks required by the installed Shopify application must be handled within Shopify’s required time windows.
+
+### 7.5 Runtime architecture
+
+The service will use:
+
+- FastAPI for HTTP APIs
+- SQLAlchemy 2 for database access
+- PostgreSQL for application state and the durable worker queue
+- Alembic for versioned database migrations
+- Pydantic settings for validated configuration
+- Provider-neutral OpenID Connect token validation for staff access
+
+One Docker image will run in two roles:
+
+- **Web:** APIs, health endpoints, and webhook receipt
+- **Worker:** webhook processing, retries, certificate operations, and public-data projection
+
+The worker will claim queued database records transactionally so multiple workers do not process the same event. Redis is intentionally omitted from the first release.
+
+Migrations run as an explicit release step, not automatically from every web instance. Production uses managed PostgreSQL with encrypted transport, least-privilege credentials, automated backups, and tested restoration.
+
+### 7.6 Security and failure behaviour
+
+Security controls:
+
+- Secrets exist only in environment-managed secret storage.
+- Every external connection uses encrypted transport.
+- PostgreSQL roles have only the privileges required by each runtime role.
+- Webhook HMAC validation precedes payload parsing or persistence.
+- Staff endpoints validate issuer, audience, signature, expiry, and role claims.
+- Request-size limits, rate limits, and strict input validation protect public endpoints.
+- Logs exclude tokens, raw evidence, unnecessary personal data, and full webhook payloads.
+- Verified-record changes produce append-only audit events.
+- Raw payment-card data never enters FastAPI.
+
+If FastAPI is slow or unavailable, Shopify browsing, cart, checkout, payments, and order management continue working. The theme displays a neutral “Provenance details temporarily unavailable” state and does not block purchase.
 
 ### 6.3 Inventory
 
@@ -248,7 +365,7 @@ The cart will support:
 
 Checkout will remain Shopify-hosted to preserve security, compatibility, and payment reliability.
 
-## 7. Payments and International Markets
+## 8. Payments and International Markets
 
 ### 7.1 Store currency
 
@@ -291,7 +408,7 @@ Every internationally available product must include:
 
 The store will clearly state whether shipments are Delivered Duty Paid or Delivered Duty Unpaid for each supported destination. Duty estimates must not be described as guaranteed unless the selected checkout and carrier arrangement supports guaranteed landed costs.
 
-## 8. Order and Fulfilment Operations
+## 9. Order and Fulfilment Operations
 
 The order lifecycle will include:
 
@@ -308,7 +425,7 @@ Customer notifications will use the Luit & Loom visual identity and voice for or
 
 The admin workflow must let staff identify one-of-a-kind products, made-to-order products, fall/pico requests, international orders, and orders requiring customs documentation.
 
-## 9. Interaction and Error States
+## 10. Interaction and Error States
 
 The theme will provide clear states for:
 
@@ -323,13 +440,15 @@ The theme will provide clear states for:
 - Checkout handoff failure
 - Payment failure returned by Shopify
 - Network failure
+- Provenance service unavailable
+- Invalid, unknown, or revoked certificate
 - Invalid newsletter or account input
 
 Errors must explain what happened, preserve customer input where possible, and offer a direct recovery action.
 
 Motion will be restrained, purposeful, and disabled or reduced when the visitor requests reduced motion.
 
-## 10. Accessibility
+## 11. Accessibility
 
 The target is WCAG 2.2 AA for theme-controlled experiences.
 
@@ -346,7 +465,7 @@ Requirements include:
 - No interaction that depends only on hover, colour, or animation
 - Reduced-motion support
 
-## 11. Performance and Search
+## 12. Performance and Search
 
 The theme will prioritize:
 
@@ -367,7 +486,7 @@ Search optimization will include:
 - Market-aware URLs where configured
 - Social-sharing metadata
 
-## 12. Analytics and Consent
+## 13. Analytics and Consent
 
 Analytics will cover:
 
@@ -382,7 +501,7 @@ Analytics will cover:
 
 Marketing and analytics integrations must respect the visitor’s consent choices and the requirements of the active market.
 
-## 13. Testing and Acceptance
+## 14. Testing and Acceptance
 
 The release will be tested across current major mobile and desktop browsers.
 
@@ -400,6 +519,9 @@ Functional coverage will include:
 - Inventory transitions
 - Order notifications
 - Error and empty states
+- Public certificate verification and revocation
+- Shopify webhook signature validation and duplicate-event handling
+- Theme fallback when FastAPI is slow or unavailable
 
 Quality coverage will include:
 
@@ -412,7 +534,22 @@ Quality coverage will include:
 - Structured data validation
 - Policy and trust-link review
 
-## 14. Launch Gates
+Backend coverage will include:
+
+- FastAPI route and domain unit tests
+- Integration tests against real PostgreSQL
+- Valid, invalid, replayed, and out-of-order Shopify webhooks
+- Idempotent duplicate-event handling
+- Certificate issuance, lookup, correction, and revocation
+- Public/private data separation
+- Staff issuer, audience, signature, expiry, and role authorization
+- Worker claims, retries, bounded backoff, permanent failure, and replay
+- Alembic migration from an empty database
+- Backup restoration
+- Secret rotation
+- Health-check and dependency-failure behaviour
+
+## 15. Launch Gates
 
 The store cannot accept real orders until all of the following are complete:
 
@@ -429,12 +566,23 @@ The store cannot accept real orders until all of the following are complete:
 - Test transactions for successful payment, failed payment, refund, cancellation, and fulfilment
 - Working transactional email and order tracking
 - Privacy, terms, shipping, and returns review
+- Deployed FastAPI web and worker services
+- Managed PostgreSQL backups and successful restoration evidence
+- Shopify webhook signing secret configured and signature tests passing
+- Staff OpenID Connect issuer, audience, and roles configured
+- Verified public/private field separation
+- Certificate QR lookup, revocation, and unavailable-service states tested
+- Shopify-required customer-data deletion handling tested
 
-## 15. Out of Scope for the First Release
+## 16. Out of Scope for the First Release
 
 The following are intentionally deferred:
 
 - A custom-built commerce admin
+- A separate provenance administration dashboard
+- A headless storefront or FastAPI commerce gateway
+- Custom product recommendations
+- A general analytics warehouse
 - Native mobile applications
 - Wholesale or B2B ordering
 - Marketplace onboarding for third-party sellers
@@ -446,7 +594,7 @@ The following are intentionally deferred:
 
 These features may be evaluated after the core store has real customer and operational data.
 
-## 16. Success Criteria
+## 17. Success Criteria
 
 The first release succeeds when:
 
@@ -454,6 +602,12 @@ The first release succeeds when:
 - Every purchasable saree has clear provenance and commerce information.
 - Indian and supported international customers can complete a real order.
 - Stock updates reliably prevent the same unique saree from being sold twice.
-- Store staff can manage products, artisans, inventory, orders, and fulfilment through Shopify.
+- Store staff can manage products, approved public artisan profiles, inventory, orders, and fulfilment through Shopify.
+- Authorized provenance staff can verify artisans, evidence, provenance, and certificates through the protected FastAPI interface.
+- Verified sarees can be linked to permanent public authenticity certificates.
+- Invalid, unknown, and revoked certificates produce unambiguous public results.
+- Shopify webhook retries do not create duplicate provenance or certificate actions.
+- Private artisan verification evidence never appears in public APIs or Shopify storefront data.
+- Shopify shopping and checkout remain usable when FastAPI is unavailable.
 - The experience is visually distinctive, accessible, responsive, and fast enough for mobile shoppers.
 - No placeholder product, artisan, policy, or operational claim remains when real orders are enabled.
