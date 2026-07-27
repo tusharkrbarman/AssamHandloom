@@ -34,9 +34,9 @@ async def test_product_gallery_preserves_source_alt_and_loading_priority(
     gallery_images = document.cssselect(".product-detail__gallery img")
 
     assert len(gallery_images) == 2
-    assert gallery_images[0].get("alt") == "Muga silk in a warm red river-line weave"
+    assert gallery_images[0].get("alt") == "First Muga silk detail"
     assert gallery_images[0].get("loading") is None
-    assert gallery_images[1].get("alt") == "Second Muga silk detail"
+    assert gallery_images[1].get("alt") == "Muga silk in a warm red river-line weave"
     assert gallery_images[1].get("loading") == "lazy"
 
 
@@ -68,3 +68,6 @@ async def test_secondary_card_image_is_decorative_and_hover_scoped(
     assert secondary[0].get("aria-hidden") == "true"
     assert secondary[0].get("alt") == ""
     assert "@media (hover: hover) and (pointer: fine)" in css
+    primary = document.cssselect(".product-card__primary-image")
+    assert primary[0].get("alt") == "Muga silk in a warm red river-line weave"
+    assert secondary[0].get("src") != primary[0].get("src")

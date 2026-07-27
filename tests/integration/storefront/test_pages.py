@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from lxml import html
 
 pytest_plugins = ("tests.integration.storefront.test_catalog_routes",)
 
@@ -87,6 +88,29 @@ async def test_htmx_results_region_updates_cards_and_pagination_together(
     assert "Muga Evening" not in response.text
     assert "Page 1 of" not in response.text
     assert "<!doctype html>" not in response.text.lower()
+
+
+@pytest.mark.anyio
+async def test_htmx_outer_swap_replaces_one_complete_filtered_results_region(
+    app_client: AsyncClient, seeded_catalog: None
+) -> None:
+    path = "/shop?silk_type=Muga&silk_type=Pat&page_size=1&page=2"
+    full = await app_client.get(path)
+    fragment = await app_client.get(path, headers={"HX-Request": "true"})
+    document = html.fromstring(full.text)
+    old_region = document.cssselect("#catalogue-results")[0]
+    replacement = html.fragment_fromstring(fragment.text)
+
+    old_region.getparent().replace(old_region, replacement)
+
+    assert 'hx-swap="outerHTML"' in full.text
+    assert len(document.cssselect("#catalogue-results")) == 1
+    assert len(document.cssselect("#product-grid")) == 1
+    assert len(document.cssselect('#catalogue-results[aria-live="polite"]')) == 1
+    assert "Page 2 of 3" in fragment.text
+    assert (
+        "silk_type=Muga&amp;silk_type=Pat&amp;page_size=1&amp;page=3" in fragment.text
+    )
 
 
 @pytest.mark.anyio

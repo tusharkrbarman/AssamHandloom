@@ -61,6 +61,7 @@ class CatalogService:
             available=any(candidate.inventory_quantity > 0 for candidate in visible_variants),
             primary_image=primary_media.url if primary_media is not None else None,
             media=self._public_media(visible.media),
+            primary_media=self._to_public_media(primary_media) if primary_media else None,
             is_sample=is_sample,
         )
 
@@ -144,12 +145,13 @@ class CatalogService:
 
     @staticmethod
     def _public_media(media: Sequence[ProductMedia]) -> tuple[PublicProductMedia, ...]:
-        """Expose ordered media, keeping the designated primary image first."""
+        """Expose media in source display order for galleries and detail pages."""
 
-        ordered = sorted(media, key=lambda item: (not item.is_primary, item.display_order))
-        return tuple(
-            PublicProductMedia(
-                url=item.url, alt_text=item.alt_text, display_order=item.display_order
-            )
-            for item in ordered
+        ordered = sorted(media, key=lambda item: item.display_order)
+        return tuple(CatalogService._to_public_media(item) for item in ordered)
+
+    @staticmethod
+    def _to_public_media(media: ProductMedia) -> PublicProductMedia:
+        return PublicProductMedia(
+            url=media.url, alt_text=media.alt_text, display_order=media.display_order
         )

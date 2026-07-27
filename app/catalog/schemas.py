@@ -39,6 +39,7 @@ class ProductCard:
     available: bool
     primary_image: str | None
     media: tuple[ProductMedia, ...] = ()
+    primary_media: ProductMedia | None = None
     is_sample: bool = False
 
     @property

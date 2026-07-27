@@ -133,18 +133,18 @@ def _product(
         product.media.extend(
             [
                 ProductMedia(
-                id=uuid.uuid4(),
-                product_id=product.id,
-                    url=media_url,
-                alt_text="Muga silk in a warm red river-line weave",
-                is_primary=True,
+                    id=uuid.uuid4(),
+                    product_id=product.id,
+                    url=f"{media_url}%3C!--first--%3E",
+                    alt_text="First Muga silk detail",
                 ),
                 ProductMedia(
                 id=uuid.uuid4(),
                 product_id=product.id,
-                    url=media_url,
-                alt_text="Second Muga silk detail",
-                display_order=1,
+                    url=f"{media_url}%3C!--primary--%3E",
+                    alt_text="Muga silk in a warm red river-line weave",
+                    display_order=1,
+                    is_primary=True,
                 ),
             ]
         )
