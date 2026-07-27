@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.catalog.models import ArtisanProfile, Product, ProductMedia, PublicationState, Variant
@@ -330,3 +331,26 @@ async def test_case_insensitive_legacy_variant_sku_collision_writes_nothing(
 
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
     assert await db_session.scalar(select(func.count()).select_from(Variant)) == 1
+
+
+@pytest.mark.anyio
+async def test_postgresql_enforces_canonical_slug_and_sku_uniqueness(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    db_session.add(
+        Product(slug="LUIT-DAWN", title="Case collision", silk_type="Muga", is_sample=False)
+    )
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+    product = Product(slug="canonical-variant-owner", title="Owner", silk_type="Pat")
+    db_session.add(product)
+    db_session.add(
+        Variant(product=product, sku="rrg-muga-001", price_minor=1, currency="INR")
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()

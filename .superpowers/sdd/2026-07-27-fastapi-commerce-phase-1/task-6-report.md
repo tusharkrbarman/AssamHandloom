@@ -109,3 +109,28 @@ Success: no issues found in 16 source files # mypy
 ### Concerns
 
 - Existing historical rows that predate migration `0003` remain `is_sample=false` by design. The loader safely reports a collision rather than guessing ownership; operators should explicitly mark or replace legacy preview data before reseeding it.
+
+## Fix round 3/5 — canonical-key race hardening
+
+### RED evidence
+
+The PostgreSQL invariant regression inserted `LUIT-DAWN` after seeded `luit-dawn` without an error, proving raw case-sensitive unique keys were insufficient.
+
+### GREEN evidence
+
+```text
+13 passed in 1.62s # focused PostgreSQL seed suite
+78 passed in 5.54s # complete Phase 1 suite
+All checks passed! # Ruff
+Success: no issues found in 16 source files # mypy
+```
+
+### Self-review
+
+- Migration `0004_canonical_catalogue_keys` adds explicit unique expression indexes `uq_products_slug_canonical` on `lower(slug)` and `uq_variants_sku_canonical` on `upper(sku)`; ORM metadata declares the same indexes.
+- Database tests prove differently cased slug and SKU inserts cannot coexist with seeded records.
+- The loader catches only raw/canonical product-slug and variant-SKU uniqueness violations and translates those races to `SeedCollisionError`; all other integrity errors propagate unchanged.
+
+### Concerns
+
+- PostgreSQL canonical indexes close the logical-duplicate race even when another session writes between loader preflight and mutation. The test suite directly exercises the invariant; production contention results in one writer succeeding and the other receiving the explicit collision outcome.

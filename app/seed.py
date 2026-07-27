@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.catalog.models import (
@@ -220,33 +221,52 @@ async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult
     products_raw = catalogue["products"]
     assert isinstance(artisans_raw, list)
     assert isinstance(products_raw, list)
-    async with session.begin():
-        source_slugs = [
-            _require_string(_as_object(item, "product"), "slug") for item in products_raw
-        ]
-        await _preflight_seed_collisions(session, products_raw)
-        previous_artisan_ids = (
-            (
-                await session.scalars(
-                    select(Product.artisan_id).where(func.lower(Product.slug).in_(source_slugs))
-                )
-            ).all()
-        )
-        stale_artisan_ids = {
-            artisan_id for artisan_id in previous_artisan_ids if artisan_id is not None
-        }
-        artisans = await _upsert_artisans(session, artisans_raw)
-        result = SeedResult()
-        for product_raw in products_raw:
-            product = _as_object(product_raw, "product")
-            created = await _upsert_product(session, product, artisans)
-            result = SeedResult(
-                products_created=result.products_created + int(created),
-                products_updated=result.products_updated + int(not created),
+    try:
+        async with session.begin():
+            source_slugs = [
+                _require_string(_as_object(item, "product"), "slug") for item in products_raw
+            ]
+            await _preflight_seed_collisions(session, products_raw)
+            previous_artisan_ids = (
+                (
+                    await session.scalars(
+                        select(Product.artisan_id).where(func.lower(Product.slug).in_(source_slugs))
+                    )
+                ).all()
             )
-        await session.flush()
-        await _remove_unreferenced_seed_artisans(session, stale_artisan_ids)
+            stale_artisan_ids = {
+                artisan_id for artisan_id in previous_artisan_ids if artisan_id is not None
+            }
+            artisans = await _upsert_artisans(session, artisans_raw)
+            result = SeedResult()
+            for product_raw in products_raw:
+                product = _as_object(product_raw, "product")
+                created = await _upsert_product(session, product, artisans)
+                result = SeedResult(
+                    products_created=result.products_created + int(created),
+                    products_updated=result.products_updated + int(not created),
+                )
+            await session.flush()
+            await _remove_unreferenced_seed_artisans(session, stale_artisan_ids)
+    except IntegrityError as error:
+        if _is_catalogue_key_collision(error):
+            raise SeedCollisionError(
+                "seed collision: canonical product slug or variant SKU"
+            ) from error
+        raise
     return result
+
+
+def _is_catalogue_key_collision(error: IntegrityError) -> bool:
+    constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return constraint in {
+        "uq_products_slug",
+        "uq_variants_sku",
+        "uq_products_slug_canonical",
+        "uq_variants_sku_canonical",
+        "products_slug_key",
+        "variants_sku_key",
+    }
 
 
 async def _upsert_artisans(

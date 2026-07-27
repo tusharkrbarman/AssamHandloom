@@ -9,10 +9,12 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
@@ -72,6 +74,7 @@ class Product(Timestamped, Base):
     """A handloom product and its public catalogue content."""
 
     __tablename__ = "products"
+    __table_args__ = (Index("uq_products_slug_canonical", text("lower(slug)"), unique=True),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
@@ -113,6 +116,7 @@ class Variant(Timestamped, Base):
 
     __tablename__ = "variants"
     __table_args__ = (
+        Index("uq_variants_sku_canonical", text("upper(sku)"), unique=True),
         CheckConstraint("price_minor >= 0", name="ck_variants_price_minor_non_negative"),
         CheckConstraint(
             "compare_at_price_minor IS NULL OR compare_at_price_minor >= price_minor",
