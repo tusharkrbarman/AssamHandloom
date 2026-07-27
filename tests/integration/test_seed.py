@@ -370,7 +370,9 @@ async def test_non_sample_published_variant_sku_collision_is_unchanged(
             product=product,
             sku="RRG-MUGA-001",
             price_minor=999,
+            compare_at_price_minor=1200,
             currency="INR",
+            inventory_quantity=7,
             publication_state=PublicationState.PUBLISHED,
             is_sample=False,
         )
@@ -383,8 +385,8 @@ async def test_non_sample_published_variant_sku_collision_is_unchanged(
     persisted = await db_session.scalar(select(Variant).where(Variant.sku == "RRG-MUGA-001"))
     assert persisted is not None
     assert persisted.price_minor == 999
-    assert persisted.compare_at_price_minor is None
-    assert persisted.inventory_quantity == 0
+    assert persisted.compare_at_price_minor == 1200
+    assert persisted.inventory_quantity == 7
     assert persisted.publication_state is PublicationState.PUBLISHED
     assert persisted.is_sample is False
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
