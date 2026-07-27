@@ -68,6 +68,23 @@ def test_database_url() -> Generator[str, None, None]:
 
 
 @pytest.fixture
+async def liveness_client() -> AsyncGenerator[AsyncClient, None]:
+    settings = Settings(
+        database_url="postgresql+psycopg://postgres@127.0.0.1:1/luit_loom_unreachable",
+        secret_key="test-secret-key-that-is-long-enough",
+        environment="test",
+        public_base_url="http://testserver",
+        catalogue_preview_enabled=True,
+    )
+    app = create_app(settings)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+    await app.state.engine.dispose()
+
+
+@pytest.fixture
 async def app_client(test_database_url: str) -> AsyncGenerator[AsyncClient, None]:
     settings = Settings(
         database_url=test_database_url,

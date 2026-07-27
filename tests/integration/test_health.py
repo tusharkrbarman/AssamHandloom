@@ -10,8 +10,8 @@ from app.config import Settings
 
 
 @pytest.mark.anyio
-async def test_liveness_does_not_require_database(app_client):
-    response = await app_client.get("/health/live")
+async def test_liveness_does_not_require_database(liveness_client):
+    response = await liveness_client.get("/health/live")
 
     assert response.status_code == 200
     assert response.json() == {"status": "live"}
