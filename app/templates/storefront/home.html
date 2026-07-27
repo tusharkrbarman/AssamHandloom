@@ -3,7 +3,7 @@
 {% set hero_product = page.items[0] if page.items else none %}
 <section class="home-hero editorial-grid">
   <div class="home-hero__copy">
-    <p class="eyebrow">Contemporary Assamese handloom</p>
+    <p class="eyebrow">Heritage series · Collector's edition</p>
     <h1>Woven by Assam.<br>Worn with meaning.</h1>
     <p class="hero-deck">Quietly expressive silk, traced to the people and practices that make it.</p>
     <div class="action-row"><a class="button" href="/shop?sort=newest">Shop new arrivals</a><a class="button button--secondary" href="/our-story">View our story</a></div>
@@ -18,10 +18,10 @@
   </figure>
 </section>
 <section class="trust-strip" aria-label="Catalogue assurances">
-  <p><strong>Material named</strong><span>Muga, Pat, and Eri</span></p>
-  <p><strong>Maker context</strong><span>Shared when verified</span></p>
-  <p class="trust-strip__lower trust-strip__new-row"><strong>Availability shown</strong><span>Clear catalogue status</span></p>
-  <p class="trust-strip__lower"><strong>Care guidance</strong><span>Specific to each weave</span></p>
+  <p><svg class="trust-strip__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z"></path><path d="m9 12 2 2 4-4"></path></svg><strong>Material named</strong><span>Muga, Pat, and Eri</span></p>
+  <p><svg class="trust-strip__icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg><strong>Maker context</strong><span>Shared when verified</span></p>
+  <p class="trust-strip__lower trust-strip__new-row"><svg class="trust-strip__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22c4-3 7-7 7-12-5 0-9 3-9 8"></path><path d="M12 22C8 18 5 14 5 9c5 0 9 3 9 8"></path></svg><strong>Availability shown</strong><span>Clear catalogue status</span></p>
+  <p class="trust-strip__lower"><svg class="trust-strip__icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16v13H4z"></path><path d="m4 7 4-4h8l4 4M9 11h6"></path></svg><strong>Care guidance</strong><span>Specific to each weave</span></p>
 </section>
 <section class="home-section featured-weaves">
   <div class="section-heading"><div><p class="eyebrow">Featured weaves</p><h2>Small editions, held in view</h2></div><a href="/shop">Browse full catalogue <span aria-hidden="true">→</span></a></div>
@@ -34,10 +34,9 @@
 </section>
 <section class="home-section artisan-feature">
   <div><p class="eyebrow">Featured artisan</p><h2>Maker stories are introduced with care.</h2><p>This is a sample disclosure: artisan names and production notes will expand as the catalogue grows.</p><a href="/artisans">Meet the artisans <span aria-hidden="true">→</span></a></div>
-  <div class="artisan-feature__study" aria-hidden="true"><span>Luit &amp; Loom</span></div>
+  <div class="artisan-feature__study" aria-hidden="true"><div><span>Luit &amp; Loom</span></div></div>
 </section>
 <section class="newsletter-invitation">
-  <div><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p></div>
-  <div class="newsletter-form" aria-label="Newsletter preview"><label class="visually-hidden" for="newsletter-email">Email address</label><input id="newsletter-email" type="email" placeholder="Your email address" disabled><button type="button" disabled>Notify me</button></div>
+  <div class="newsletter-invitation__inner"><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p><div class="newsletter-form" aria-label="Newsletter preview"><label class="visually-hidden" for="newsletter-email">Email address</label><input id="newsletter-email" type="email" placeholder="Your email address" disabled><button type="button" disabled>Notify me</button></div></div>
 </section>
 {% endblock %}
