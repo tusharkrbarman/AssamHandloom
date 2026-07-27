@@ -32,9 +32,11 @@ class CatalogService:
         """Return a product only when it and at least one variant are visible."""
 
         visible_states = self._visible_states(preview_enabled)
-        if product.publication_state not in visible_states:
+        if product.publication_state not in visible_states or (
+            not preview_enabled and product.is_sample
+        ):
             return None
-        if not any(variant.publication_state in visible_states for variant in product.variants):
+        if not self._visible_variants(product, preview_enabled):
             return None
         return product
 
@@ -48,8 +50,11 @@ class CatalogService:
         variant = min(visible_variants, key=lambda candidate: candidate.price_minor)
         primary_media = self._primary_media(visible.media)
         artisan = visible.artisan
-        is_sample = visible.publication_state is PublicationState.PREVIEW or (
-            artisan.is_sample if artisan is not None else False
+        is_sample = (
+            visible.publication_state is PublicationState.PREVIEW
+            or visible.is_sample
+            or any(variant.is_sample for variant in visible_variants)
+            or (artisan.is_sample if artisan is not None else False)
         )
         return ProductCard(
             slug=visible.slug,
@@ -59,7 +64,6 @@ class CatalogService:
             price_minor=variant.price_minor,
             currency=variant.currency,
             available=any(candidate.inventory_quantity > 0 for candidate in visible_variants),
-            primary_image=primary_media.url if primary_media is not None else None,
             media=self._public_media(visible.media),
             primary_media=self._to_public_media(primary_media) if primary_media else None,
             is_sample=is_sample,
@@ -72,8 +76,12 @@ class CatalogService:
         if visible is None:
             return None
         artisan = visible.artisan
-        is_sample = visible.publication_state is PublicationState.PREVIEW or (
-            artisan.is_sample if artisan is not None else False
+        visible_variants = self._visible_variants(visible, preview_enabled)
+        is_sample = (
+            visible.publication_state is PublicationState.PREVIEW
+            or visible.is_sample
+            or any(variant.is_sample for variant in visible_variants)
+            or (artisan.is_sample if artisan is not None else False)
         )
         variants = tuple(
             ProductVariant(
@@ -85,7 +93,7 @@ class CatalogService:
                 weight_grams=variant.weight_grams,
                 available=variant.inventory_quantity > 0,
             )
-            for variant in self._visible_variants(visible, preview_enabled)
+            for variant in visible_variants
         )
         return ProductDetail(
             slug=visible.slug,
@@ -136,7 +144,10 @@ class CatalogService:
     def _visible_variants(self, product: Product, preview_enabled: bool) -> list[Variant]:
         visible_states = self._visible_states(preview_enabled)
         return [
-            variant for variant in product.variants if variant.publication_state in visible_states
+            variant
+            for variant in product.variants
+            if variant.publication_state in visible_states
+            and (preview_enabled or not variant.is_sample)
         ]
 
     @staticmethod

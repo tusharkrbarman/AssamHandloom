@@ -7,11 +7,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from app.catalog.models import ArtisanProfile, Product, ProductMedia, PublicationState, Variant
+from app.catalog.models import (
+    ArtisanProfile,
+    Collection,
+    CollectionProduct,
+    Product,
+    ProductMedia,
+    PublicationState,
+    Variant,
+)
 from app.catalog.repository import CatalogRepository
 from app.catalog.schemas import ProductListQuery
 from app.seed import CatalogueValidationError, SeedCollisionError, load_sample_catalogue
@@ -27,6 +36,7 @@ async def db_session(test_database_url: str):  # type: ignore[no-untyped-def]
     engine = create_async_engine(test_database_url)
     async with AsyncSession(engine, expire_on_commit=False) as session:
         await session.execute(delete(Product))
+        await session.execute(delete(Collection))
         await session.execute(delete(ArtisanProfile))
         await session.commit()
         yield session
@@ -42,6 +52,97 @@ async def test_seed_is_idempotent(db_session: AsyncSession, catalogue_path: Path
     assert first.products_updated == 0
     assert second.products_created == 0
     assert second.products_updated == 12
+
+
+@pytest.mark.anyio
+async def test_seed_reconciles_the_preview_only_inaugural_collection(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    second = await load_sample_catalogue(db_session, catalogue_path)
+
+    collections = list((await db_session.scalars(select(Collection))).all())
+    memberships = list(
+        (
+            await db_session.scalars(
+                select(CollectionProduct)
+                .join(Product)
+                .where(CollectionProduct.collection_id == collections[0].id)
+                .order_by(CollectionProduct.display_order)
+            )
+        ).all()
+    )
+    ordered_titles = list(
+        (
+            await db_session.scalars(
+                select(Product.title)
+                .join(CollectionProduct)
+                .where(CollectionProduct.collection_id == collections[0].id)
+                .order_by(CollectionProduct.display_order)
+            )
+        ).all()
+    )
+
+    assert second.products_updated == 12
+    assert len(collections) == 1
+    assert collections[0].slug == "river-reed-gold"
+    assert collections[0].is_sample is True
+    assert collections[0].publication_state is PublicationState.PREVIEW
+    assert [membership.display_order for membership in memberships] == list(range(1, 13))
+    assert ordered_titles == [
+        "Luit Dawn",
+        "Sualkuchi Gold",
+        "Xorai Light",
+        "Monsoon Reed",
+        "Kopou Ivory",
+        "Jaapi Vermilion",
+        "Dikhow Moon",
+        "Bihu Ember",
+        "Eri Mist",
+        "Forest Quiet",
+        "River Reed",
+        "Lac Horizon",
+    ]
+
+
+@pytest.mark.anyio
+async def test_seed_collection_is_preview_only_and_renders_when_preview_is_enabled(
+    db_session: AsyncSession, catalogue_path: Path, app_client: AsyncClient
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    repository = CatalogRepository(db_session)
+
+    assert await repository.list_collections(preview_enabled=False) == []
+    preview_collections = await repository.list_collections(preview_enabled=True)
+    assert [collection.slug for collection in preview_collections] == ["river-reed-gold"]
+
+    response = await app_client.get("/collections/river-reed-gold")
+
+    assert response.status_code == 200
+    assert "River, Reed &amp; Gold" in response.text
+    assert "Luit Dawn" in response.text
+
+
+@pytest.mark.anyio
+async def test_seed_rejects_a_non_sample_canonical_collection_slug_collision(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    db_session.add(
+        Collection(
+            slug="RIVER-REED-GOLD",
+            title="Verified collection",
+            publication_state=PublicationState.PUBLISHED,
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(SeedCollisionError, match="collection slug"):
+        await load_sample_catalogue(db_session, catalogue_path)
+
+    collections = list((await db_session.scalars(select(Collection))).all())
+    assert [(item.slug, item.title, item.is_sample) for item in collections] == [
+        ("RIVER-REED-GOLD", "Verified collection", False)
+    ]
 
 
 @pytest.mark.anyio
@@ -94,6 +195,20 @@ async def test_seeded_records_are_complete_and_explicitly_sample(
     )
     assert all(product.description and product.colour and product.occasion for product in products)
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 12
+    assert tuple(product.title for product in products) == (
+        "Luit Dawn",
+        "Sualkuchi Gold",
+        "Xorai Light",
+        "Monsoon Reed",
+        "Kopou Ivory",
+        "Jaapi Vermilion",
+        "Dikhow Moon",
+        "Bihu Ember",
+        "Eri Mist",
+        "Forest Quiet",
+        "River Reed",
+        "Lac Horizon",
+    )
 
 
 def _mutated_catalogue(

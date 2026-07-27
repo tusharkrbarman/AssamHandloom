@@ -5,7 +5,7 @@ import uuid
 import pytest
 
 from app.catalog.models import ArtisanProfile, Product, PublicationState, Variant
-from app.catalog.schemas import ProductCard
+from app.catalog.schemas import ProductCard, ProductVariant
 from app.catalog.service import CatalogService
 
 
@@ -56,7 +56,6 @@ def test_product_card_formats_integer_minor_units() -> None:
         price_minor=1890000,
         currency="INR",
         available=True,
-        primary_image=None,
     )
 
     assert card.display_price == "₹18,900"
@@ -71,10 +70,71 @@ def test_product_card_uses_iso_code_for_non_inr_currency() -> None:
         price_minor=1890000,
         currency="USD",
         available=True,
-        primary_image=None,
     )
 
     assert card.display_price == "USD 18,900"
+
+
+def test_product_variant_formats_paise_without_float_conversion() -> None:
+    variant = ProductVariant(
+        sku="RRG-MUGA-001",
+        title="Sample standard",
+        price_minor=189_099,
+        compare_at_price_minor=None,
+        currency="INR",
+        weight_grams=600,
+        available=True,
+    )
+
+    assert variant.display_price == "₹1,890.99"
+
+
+def test_published_sample_product_is_hidden_from_the_public_service(
+    catalog_service: CatalogService,
+) -> None:
+    product = _product(PublicationState.PUBLISHED, PublicationState.PUBLISHED)
+    product.is_sample = True
+
+    assert catalog_service.visible_product(product, preview_enabled=False) is None
+    assert catalog_service.to_product_card(product, preview_enabled=False) is None
+
+
+def test_public_service_excludes_published_sample_variants_and_uses_a_real_variant(
+    catalog_service: CatalogService,
+) -> None:
+    product = _product(PublicationState.PUBLISHED, PublicationState.PUBLISHED)
+    product.variants[0].price_minor = 999
+    product.variants[0].is_sample = True
+    product.variants.append(
+        Variant(
+            id=uuid.uuid4(),
+            product_id=product.id,
+            sku="SKU-LIVE",
+            price_minor=189_099,
+            currency="INR",
+            publication_state=PublicationState.PUBLISHED,
+            inventory_quantity=1,
+        )
+    )
+
+    card = catalog_service.to_product_card(product, preview_enabled=False)
+    detail = catalog_service.to_product_detail(product, preview_enabled=False)
+
+    assert card is not None and card.display_price == "₹1,890.99"
+    assert detail is not None
+    assert [variant.sku for variant in detail.variants] == ["SKU-LIVE"]
+
+
+def test_preview_service_labels_a_published_product_with_a_sample_variant(
+    catalog_service: CatalogService,
+) -> None:
+    product = _product(PublicationState.PUBLISHED, PublicationState.PUBLISHED)
+    product.variants[0].is_sample = True
+
+    detail = catalog_service.to_product_detail(product, preview_enabled=True)
+
+    assert detail is not None
+    assert detail.sample_label == "Sample"
 
 
 def test_draft_product_is_never_returned(

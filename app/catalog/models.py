@@ -173,6 +173,7 @@ class Collection(Timestamped, Base):
     """A manually ordered, publishable group of products."""
 
     __tablename__ = "collections"
+    __table_args__ = (Index("uq_collections_slug_canonical", text("lower(slug)"), unique=True),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
@@ -186,6 +187,9 @@ class Collection(Timestamped, Base):
     )
     display_order: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    is_sample: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
 
     collection_products: Mapped[list[CollectionProduct]] = relationship(

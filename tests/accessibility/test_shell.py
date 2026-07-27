@@ -136,6 +136,17 @@ async def test_local_assets_and_no_javascript_navigation_fallback(app_client: As
     )
     assert all(source and urlparse(source).path.startswith("/static/") for source in script_sources)
     assert len(primary_links) == 8
+    assert {link.get("href") for link in primary_links} >= {"/artisans", "/our-story", "/journal"}
+    assert {
+        link.get("href") for link in document.cssselect('nav[aria-label="Footer navigation"] a')
+    } == {
+        "/pages/silk-guide",
+        "/pages/care",
+        "/pages/shipping",
+        "/pages/returns",
+        "/pages/contact",
+        "/pages/faq",
+    }
     assert "nth-child" not in css.text
     assert htmx.status_code == 200
     assert "htmx" in htmx.text.lower()

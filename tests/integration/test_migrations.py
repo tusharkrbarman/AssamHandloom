@@ -86,7 +86,7 @@ def _catalogue_index_names(engine: Engine) -> set[str]:
     inspector = inspect(engine)
     return {
         index["name"]
-        for table_name in ("products", "variants")
+    for table_name in ("products", "variants", "collections")
         for index in inspector.get_indexes(table_name)
         if index["name"] is not None
     }
@@ -122,8 +122,9 @@ def test_canonical_key_migration_reports_legacy_duplicates_before_index_ddl() ->
         index_names = _catalogue_index_names(engine)
         assert "uq_products_slug_canonical" in index_names
         assert "uq_variants_sku_canonical" in index_names
+        assert "uq_collections_slug_canonical" in index_names
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0004_canonical_catalogue_keys"
+                == "0005_sample_collection_ownership"
             )

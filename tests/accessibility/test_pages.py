@@ -9,7 +9,16 @@ pytest_plugins = ("tests.integration.storefront.test_catalog_routes",)
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "path", ["/", "/shop", "/collections/river-reed-gold", "/products/luit-dawn"]
+    "path",
+    [
+        "/",
+        "/shop",
+        "/collections/river-reed-gold",
+        "/products/luit-dawn",
+        "/artisans",
+        "/our-story",
+        "/journal",
+    ],
 )
 async def test_public_pages_keep_one_page_heading_and_labelled_images(
     app_client: AsyncClient, seeded_catalog: None, path: str

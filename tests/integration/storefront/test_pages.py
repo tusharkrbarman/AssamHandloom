@@ -138,3 +138,30 @@ async def test_pagination_preserves_filters_and_collection_context(
         'href="/collections/river-reed-gold?silk_type=Muga&amp;sort=price_desc&amp;page_size=1&amp;page=2"'
         in response.text
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("path", "heading", "body"),
+    [
+        ("/artisans", "Artisans", "sample preview"),
+        ("/our-story", "Our story", "Phase 1"),
+        ("/journal", "Journal", "Understanding the silks of Assam"),
+        ("/pages/silk-guide", "Silk guide", "Muga"),
+        ("/pages/care", "Care guide", "verification"),
+        ("/pages/shipping", "Shipping", "checkout"),
+        ("/pages/returns", "Returns", "checkout"),
+        ("/pages/contact", "Contact", "not accepting orders"),
+        ("/pages/faq", "Frequently asked questions", "Phase 1"),
+    ],
+)
+async def test_editorial_and_guidance_destinations_are_honest_and_accessible(
+    app_client: AsyncClient, seeded_catalog: None, path: str, heading: str, body: str
+) -> None:
+    response = await app_client.get(path)
+    document = html.fromstring(response.text)
+
+    assert response.status_code == 200
+    assert heading in document.text_content()
+    assert body.lower() in document.text_content().lower()
+    assert len(document.cssselect("main#main-content h1")) == 1

@@ -25,6 +25,18 @@ class CatalogRepository:
         )
 
     @staticmethod
+    def _visible_variant_clause(preview_enabled: bool) -> ColumnElement[bool]:
+        state = Variant.publication_state.in_(CatalogRepository._visible_states(preview_enabled))
+        return state if preview_enabled else and_(state, Variant.is_sample.is_(False))
+
+    @staticmethod
+    def _visible_collection_clause(preview_enabled: bool) -> ColumnElement[bool]:
+        state = Collection.publication_state.in_(
+            CatalogRepository._visible_states(preview_enabled)
+        )
+        return state if preview_enabled else and_(state, Collection.is_sample.is_(False))
+
+    @staticmethod
     def _products_with_visible_variants(
         query: ProductListQuery, preview_enabled: bool
     ) -> Select[tuple[Product]]:
@@ -38,7 +50,7 @@ class CatalogRepository:
                 .join(Collection, Collection.id == CollectionProduct.collection_id)
                 .where(
                     Collection.slug == query.collection_slug,
-                    Collection.publication_state.in_(CatalogRepository._visible_states(preview_enabled)),
+                    CatalogRepository._visible_collection_clause(preview_enabled),
                 )
             )
 
@@ -51,12 +63,11 @@ class CatalogRepository:
         if query.occasions:
             statement = statement.where(Product.occasion.in_(query.occasions))
         if query.available_only:
-            visible_states = CatalogRepository._visible_states(preview_enabled)
             statement = statement.where(
                 select(Variant.id)
                 .where(
                     Variant.product_id == Product.id,
-                    Variant.publication_state.in_(visible_states),
+                    CatalogRepository._visible_variant_clause(preview_enabled),
                     Variant.inventory_quantity > 0,
                 )
                 .exists()
@@ -65,13 +76,18 @@ class CatalogRepository:
 
     @staticmethod
     def _visible_product_clause(preview_enabled: bool) -> ColumnElement[bool]:
-        visible_states = CatalogRepository._visible_states(preview_enabled)
         visible_variant = (
             select(Variant.id)
-            .where(Variant.product_id == Product.id, Variant.publication_state.in_(visible_states))
+            .where(
+                Variant.product_id == Product.id,
+                CatalogRepository._visible_variant_clause(preview_enabled),
+            )
             .exists()
         )
-        return and_(Product.publication_state.in_(visible_states), visible_variant)
+        state = Product.publication_state.in_(CatalogRepository._visible_states(preview_enabled))
+        if preview_enabled:
+            return and_(state, visible_variant)
+        return and_(state, Product.is_sample.is_(False), visible_variant)
 
     async def list_products(self, query: ProductListQuery, preview_enabled: bool) -> Page[Product]:
         """Return visible products and a stable total for the requested page."""
@@ -79,10 +95,12 @@ class CatalogRepository:
         statement = self._products_with_visible_variants(query, preview_enabled)
         total_statement = select(func.count()).select_from(statement.subquery())
         total = (await self._session.scalar(total_statement)) or 0
-        visible_states = self._visible_states(preview_enabled)
         minimum_price = (
             select(func.min(Variant.price_minor))
-            .where(Variant.product_id == Product.id, Variant.publication_state.in_(visible_states))
+            .where(
+                Variant.product_id == Product.id,
+                self._visible_variant_clause(preview_enabled),
+            )
             .correlate(Product)
             .scalar_subquery()
         )
@@ -103,7 +121,7 @@ class CatalogRepository:
                 selectinload(Product.variants),
                 with_loader_criteria(
                     Variant,
-                    Variant.publication_state.in_(visible_states),
+                    self._visible_variant_clause(preview_enabled),
                     include_aliases=True,
                 ),
             )
@@ -120,27 +138,25 @@ class CatalogRepository:
         statement = self._products_with_visible_variants(query, preview_enabled).where(
             Product.slug == slug
         )
-        visible_states = self._visible_states(preview_enabled)
         statement = statement.options(
             selectinload(Product.artisan),
             selectinload(Product.media),
             selectinload(Product.variants),
             with_loader_criteria(
                 Variant,
-                Variant.publication_state.in_(visible_states),
+                self._visible_variant_clause(preview_enabled),
                 include_aliases=True,
             ),
-        )
+        ).execution_options(populate_existing=True)
         return (await self._session.scalars(statement)).unique().one_or_none()
 
     async def list_collections(self, preview_enabled: bool) -> Sequence[Collection]:
         """Return visible collections in their explicit storefront order."""
 
-        visible_states = self._visible_states(preview_enabled)
         visible_product = self._visible_product_clause(preview_enabled)
         statement = (
             select(Collection)
-            .where(Collection.publication_state.in_(visible_states))
+            .where(self._visible_collection_clause(preview_enabled))
             .options(
                 selectinload(Collection.collection_products)
                 .selectinload(CollectionProduct.product)

@@ -117,6 +117,61 @@ async def test_repository_hides_preview_unless_explicitly_enabled(session: Async
 
 
 @pytest.mark.anyio
+async def test_repository_excludes_published_sample_rows_from_public_reads(
+    session: AsyncSession,
+) -> None:
+    public = _product("public")
+    sample_product = _product("sample-product")
+    sample_product.is_sample = True
+    mixed = _product("mixed")
+    mixed.variants[0].is_sample = True
+    mixed.variants.append(
+        Variant(
+            product=mixed,
+            sku="sku-mixed-live",
+            price_minor=200_000,
+            currency="INR",
+            publication_state=PublicationState.PUBLISHED,
+            inventory_quantity=1,
+        )
+    )
+    session.add_all([public, sample_product, mixed])
+    await session.commit()
+
+    repository = CatalogRepository(session)
+    page = await repository.list_products(ProductListQuery(sort="price_asc"), preview_enabled=False)
+    detail = await repository.get_product_by_slug("mixed", preview_enabled=False)
+
+    assert {product.slug for product in page.items} == {"public", "mixed"}
+    assert detail is not None
+    assert [variant.sku for variant in detail.variants] == ["sku-mixed-live"]
+
+
+@pytest.mark.anyio
+async def test_sample_collection_is_preview_only_even_when_manually_published(
+    session: AsyncSession,
+) -> None:
+    collection = Collection(
+        slug="sample-collection",
+        title="Sample collection",
+        publication_state=PublicationState.PUBLISHED,
+        is_sample=True,
+    )
+    collection.collection_products.append(
+        CollectionProduct(product=_product("public"), display_order=1)
+    )
+    session.add(collection)
+    await session.commit()
+
+    repository = CatalogRepository(session)
+
+    assert await repository.list_collections(preview_enabled=False) == []
+    assert [item.slug for item in await repository.list_collections(preview_enabled=True)] == [
+        "sample-collection"
+    ]
+
+
+@pytest.mark.anyio
 async def test_get_product_by_slug_applies_the_same_publication_rules(
     session: AsyncSession,
 ) -> None:

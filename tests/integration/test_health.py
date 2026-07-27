@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
@@ -23,6 +24,68 @@ async def test_readiness_checks_postgresql(app_client):
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "database": "up"}
+
+
+@pytest.mark.anyio
+async def test_readiness_returns_503_when_the_database_is_unavailable() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://postgres@127.0.0.1:1/luit_loom_unreachable",
+        secret_key="test-secret-key-that-is-long-enough",
+        environment="test",
+        public_base_url="http://testserver",
+    )
+    from app.main import create_app
+
+    class FailedConnection:
+        async def __aenter__(self) -> None:
+            from sqlalchemy.exc import SQLAlchemyError
+
+            raise SQLAlchemyError("database unavailable")
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+    class FailedEngine:
+        def connect(self) -> FailedConnection:
+            return FailedConnection()
+
+        async def dispose(self) -> None:
+            return None
+
+    app = create_app(settings)
+    app.state.engine = FailedEngine()
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        response = await client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready", "database": "down"}
+
+
+@pytest.mark.anyio
+async def test_lifespan_disposes_the_application_engine() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://postgres@127.0.0.1:1/luit_loom_unreachable",
+        secret_key="test-secret-key-that-is-long-enough",
+        environment="test",
+        public_base_url="http://testserver",
+    )
+    from app.main import create_app
+
+    dispose = AsyncMock()
+
+    app = create_app(settings)
+    engine = type("DisposableEngine", (), {})()
+    engine.dispose = dispose
+    app.state.engine = engine
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    dispose.assert_awaited_once()
 
 
 def test_settings_reject_empty_secret_key():

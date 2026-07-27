@@ -9,7 +9,7 @@
     <p class="eyebrow">{{ product.silk_type }}{% if product.colour %} · {{ product.colour }}{% endif %}</p>
     <h1>{{ product.title }}</h1>
     <p>{{ product.description or "A considered handloom catalogue entry, shared with material and maker context." }}</p>
-    <p class="price">{{ "₹{:,.0f}".format(product.variants[0].price_minor / 100) if product.variants else "Price on request" }}</p>
+    <p class="price">{{ product.variants[0].display_price if product.variants else "Price on request" }}</p>
     <p>{% if product.variants and product.variants | selectattr('available') | list %}Available{% else %}Currently unavailable{% endif %}</p>
     {% if product.sample_label %}<p class="sample-label">{{ product.sample_label }} catalogue item</p>{% endif %}
     <button type="button" disabled aria-describedby="checkout-note">Add to bag</button>

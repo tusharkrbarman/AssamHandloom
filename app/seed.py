@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.catalog.models import (
     ArtisanProfile,
+    Collection,
+    CollectionProduct,
     Product,
     ProductMedia,
     PublicationState,
@@ -26,12 +28,12 @@ APPROVED_TITLES = (
     "Sualkuchi Gold",
     "Xorai Light",
     "Monsoon Reed",
-    "Brahmaputra White",
-    "Kopou Bloom",
-    "Tea Garden Mist",
-    "Japi Moon",
-    "Eri Earth",
-    "Ahin Loom",
+    "Kopou Ivory",
+    "Jaapi Vermilion",
+    "Dikhow Moon",
+    "Bihu Ember",
+    "Eri Mist",
+    "Forest Quiet",
     "River Reed",
     "Lac Horizon",
 )
@@ -64,13 +66,15 @@ def validate_catalogue(path: Path) -> dict[str, object]:
     _normalise_stable_identities(raw)
     artisans = raw.get("artisans")
     products = raw.get("products")
+    collection = raw.get("collection")
     if not isinstance(artisans, list) or not isinstance(products, list):
         raise CatalogueValidationError("catalogue requires artisan and product lists")
     if len(products) != len(APPROVED_TITLES):
         raise CatalogueValidationError("catalogue must contain exactly 12 products")
     _validate_artisans(artisans)
     _validate_products(products, len(artisans))
-    return {"artisans": artisans, "products": products}
+    _validate_collection(collection, products)
+    return {"artisans": artisans, "products": products, "collection": collection}
 
 
 def _require_string(record: dict[str, object], field: str) -> str:
@@ -114,6 +118,11 @@ def _normalise_stable_identities(catalogue: dict[str, object]) -> None:
                 sku = variant_raw.get("sku")
                 if isinstance(sku, str):
                     variant_raw["sku"] = sku.strip().upper()
+    collection = catalogue.get("collection")
+    if isinstance(collection, dict):
+        slug = collection.get("slug")
+        if isinstance(slug, str):
+            collection["slug"] = slug.strip().lower()
 
 
 def _as_object(value: object, field: str) -> dict[str, object]:
@@ -213,20 +222,38 @@ def _validate_products(products: list[object], artisan_count: int) -> None:
         raise CatalogueValidationError("catalogue must have the approved silk distribution")
 
 
+def _validate_collection(collection_raw: object, products: list[object]) -> None:
+    collection = _as_object(collection_raw, "collection")
+    for field in ("slug", "title", "description"):
+        _require_string(collection, field)
+    if collection.get("is_sample") is not True:
+        raise CatalogueValidationError("the inaugural collection must be explicitly sample")
+    if collection.get("publication_state") != PublicationState.PREVIEW.value:
+        raise CatalogueValidationError("the inaugural collection must remain preview-only")
+    source_slugs = [_require_string(_as_object(product, "product"), "slug") for product in products]
+    membership_slugs = collection.get("product_slugs")
+    if not isinstance(membership_slugs, list) or membership_slugs != source_slugs:
+        raise CatalogueValidationError(
+            "collection memberships must exactly match source product order"
+        )
+
+
 async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult:
     """Create or update the deterministic sample records using stable slug and SKU keys."""
 
     catalogue = validate_catalogue(path)
     artisans_raw = catalogue["artisans"]
     products_raw = catalogue["products"]
+    collection_raw = catalogue["collection"]
     assert isinstance(artisans_raw, list)
     assert isinstance(products_raw, list)
+    assert isinstance(collection_raw, dict)
     try:
         async with session.begin():
             source_slugs = [
                 _require_string(_as_object(item, "product"), "slug") for item in products_raw
             ]
-            await _preflight_seed_collisions(session, products_raw)
+            await _preflight_seed_collisions(session, products_raw, collection_raw)
             previous_artisan_ids = (
                 (
                     await session.scalars(
@@ -247,6 +274,7 @@ async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult
                     products_updated=result.products_updated + int(not created),
                 )
             await session.flush()
+            await _upsert_collection(session, collection_raw)
             await _remove_unreferenced_seed_artisans(session, stale_artisan_ids)
     except IntegrityError as error:
         if _is_catalogue_key_collision(error):
@@ -264,8 +292,10 @@ def _is_catalogue_key_collision(error: IntegrityError) -> bool:
         "uq_variants_sku",
         "uq_products_slug_canonical",
         "uq_variants_sku_canonical",
+        "uq_collections_slug_canonical",
         "products_slug_key",
         "variants_sku_key",
+        "collections_slug_key",
     }
 
 
@@ -405,7 +435,55 @@ async def _remove_unreferenced_seed_artisans(
             await session.delete(artisan)
 
 
-async def _preflight_seed_collisions(session: AsyncSession, products_raw: list[object]) -> None:
+async def _upsert_collection(session: AsyncSession, raw: dict[str, object]) -> None:
+    slug = _require_string(raw, "slug")
+    collection = await _find_collection_by_slug(session, slug)
+    if collection is None:
+        collection = Collection(
+            slug=slug,
+            title=_require_string(raw, "title"),
+            description=_require_string(raw, "description"),
+            publication_state=PublicationState.PREVIEW,
+            display_order=1,
+            is_sample=True,
+        )
+        session.add(collection)
+        await session.flush()
+    elif not collection.is_sample:
+        raise SeedCollisionError(f"seed collision: collection slug {slug!r} is not sample-owned")
+    collection.title = _require_string(raw, "title")
+    collection.description = _require_string(raw, "description")
+    collection.publication_state = PublicationState.PREVIEW
+    collection.display_order = 1
+    collection.is_sample = True
+    existing = list(
+        (
+            await session.scalars(
+                select(CollectionProduct).where(CollectionProduct.collection_id == collection.id)
+            )
+        ).all()
+    )
+    for membership in existing:
+        await session.delete(membership)
+    if existing:
+        await session.flush()
+    source_slugs = raw["product_slugs"]
+    assert isinstance(source_slugs, list)
+    for display_order, source_slug in enumerate(source_slugs, start=1):
+        product_slug = _require_string({"slug": source_slug}, "slug")
+        product = await _find_product_by_slug(session, product_slug)
+        if product is None or not product.is_sample:
+            raise SeedCollisionError("seed collection references a missing or non-sample product")
+        session.add(
+            CollectionProduct(
+                collection=collection, product=product, display_order=display_order
+            )
+        )
+
+
+async def _preflight_seed_collisions(
+    session: AsyncSession, products_raw: list[object], collection_raw: dict[str, object]
+) -> None:
     """Reject canonical stable keys claimed by non-sample data before any mutation."""
 
     for product_raw in products_raw:
@@ -427,6 +505,22 @@ async def _preflight_seed_collisions(session: AsyncSession, products_raw: list[o
             raise SeedCollisionError(f"seed collision: variant SKU {sku!r} is not sample-owned")
         if len(variant_matches) > 1:
             raise SeedCollisionError(f"seed collision: variant SKU {sku!r} is ambiguous")
+    collection_slug = _require_string(collection_raw, "slug")
+    collection_matches = list(
+        (
+            await session.scalars(
+                select(Collection).where(func.lower(Collection.slug) == collection_slug)
+            )
+        ).all()
+    )
+    if any(not collection.is_sample for collection in collection_matches):
+        raise SeedCollisionError(
+            f"seed collision: collection slug {collection_slug!r} is not sample-owned"
+        )
+    if len(collection_matches) > 1:
+        raise SeedCollisionError(
+            f"seed collision: collection slug {collection_slug!r} is ambiguous"
+        )
 
 
 async def _find_product_by_slug(session: AsyncSession, slug: str) -> Product | None:
@@ -439,6 +533,13 @@ async def _find_product_by_slug(session: AsyncSession, slug: str) -> Product | N
 async def _find_variant_by_sku(session: AsyncSession, sku: str) -> Variant | None:
     matches = list(
         (await session.scalars(select(Variant).where(func.upper(Variant.sku) == sku))).all()
+    )
+    return matches[0] if matches else None
+
+
+async def _find_collection_by_slug(session: AsyncSession, slug: str) -> Collection | None:
+    matches = list(
+        (await session.scalars(select(Collection).where(func.lower(Collection.slug) == slug))).all()
     )
     return matches[0] if matches else None
 

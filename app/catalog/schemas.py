@@ -5,6 +5,14 @@ from math import ceil
 from typing import Literal
 
 
+def format_minor_currency(price_minor: int, currency: str) -> str:
+    """Format integer minor units without a floating-point conversion."""
+
+    amount, remainder = divmod(price_minor, 100)
+    formatted = f"{amount:,}" if remainder == 0 else f"{amount:,}.{remainder:02d}"
+    return f"₹{formatted}" if currency == "INR" else f"{currency} {formatted}"
+
+
 @dataclass(frozen=True)
 class ProductListQuery:
     """Supported public catalogue filters and stable pagination settings."""
@@ -37,7 +45,6 @@ class ProductCard:
     price_minor: int
     currency: str
     available: bool
-    primary_image: str | None
     media: tuple[ProductMedia, ...] = ()
     primary_media: ProductMedia | None = None
     is_sample: bool = False
@@ -46,9 +53,7 @@ class ProductCard:
     def display_price(self) -> str:
         """Format stored minor units without ever converting through float."""
 
-        amount, remainder = divmod(self.price_minor, 100)
-        formatted = f"{amount:,}" if remainder == 0 else f"{amount:,}.{remainder:02d}"
-        return f"₹{formatted}" if self.currency == "INR" else f"{self.currency} {formatted}"
+        return format_minor_currency(self.price_minor, self.currency)
 
     @property
     def sample_label(self) -> str | None:
@@ -68,6 +73,12 @@ class ProductVariant:
     currency: str
     weight_grams: int | None
     available: bool
+
+    @property
+    def display_price(self) -> str:
+        """Expose a template-safe integer price representation."""
+
+        return format_minor_currency(self.price_minor, self.currency)
 
 
 @dataclass(frozen=True)
