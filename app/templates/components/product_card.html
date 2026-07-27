@@ -10,8 +10,10 @@
   <div class="product-card__body">
     <p class="eyebrow">{{ product.silk_type }}{% if product.artisan_name %} · {{ product.artisan_name }}{% endif %}</p>
     <h2><a href="/products/{{ product.slug }}">{{ product.title }}</a></h2>
-    <p class="price">{{ product.display_price }}</p>
-    <p class="availability {% if not product.available %}is-unavailable{% endif %}">{% if product.available %}Available{% else %}Currently unavailable{% endif %}</p>
+    <div class="product-card__meta-row">
+      <p class="price">{{ product.display_price }}</p>
+      <p class="availability {% if not product.available %}is-unavailable{% endif %}">{% if product.available %}Available{% else %}Currently unavailable{% endif %}</p>
+    </div>
     {% if product.sample_label %}<p class="sample-label">{{ product.sample_label }} catalogue item</p>{% endif %}
   </div>
 </article>
