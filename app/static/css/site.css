@@ -40,7 +40,7 @@ main > * { width: min(100% - 2rem, var(--content-width)); margin-inline: auto; }
 .action-row { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .home-hero { align-items: center; min-height: 38rem; }
 .home-hero__copy { grid-column: 1 / span 7; padding-block: var(--space-4); }
-.home-hero__copy h1 { font-size: clamp(2.65rem, 5vw, 4.75rem); margin-block: var(--space-2); text-wrap: balance; }.hero-deck { font-size: clamp(1.1rem, 2vw, 1.3rem); margin-bottom: var(--space-3); }
+.home-hero__copy h1 { margin-block: var(--space-2); }.hero-deck { font-size: clamp(1.1rem, 2vw, 1.3rem); margin-bottom: var(--space-3); }
 .home-hero__visual { grid-column: 8 / -1; margin: 0; position: relative; }
 .home-hero__visual > a, .home-hero__visual > .textile-placeholder { display: block; }.home-hero__visual img, .home-hero__visual .textile-placeholder { aspect-ratio: 4 / 5; min-height: 28rem; object-fit: cover; width: 100%; }
 .home-hero__visual figcaption { background: var(--color-muga); bottom: -1.5rem; color: var(--color-paper); display: grid; left: -1.5rem; max-width: 21rem; padding: var(--space-2); position: absolute; }
