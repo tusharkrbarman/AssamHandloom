@@ -150,3 +150,31 @@ Success: no issues found in 16 source files # mypy
 ### Concerns
 
 - This change intentionally blocks an upgrade until an operator resolves historical duplicate business data; that safety boundary is preferable to automatic catalogue rewrites.
+
+## Fix round 5/5 - migration failure-path and preservation evidence
+
+### Coverage completed
+
+- Added a real isolated PostgreSQL migration test that upgrades through
+  `0003_sample_catalogue_ownership`, inserts legal case-only duplicate product slugs and
+  variant SKUs, then verifies the `0004` preflight reports both canonical values with
+  actionable instructions.
+- The failed upgrade is verified to leave neither canonical index behind. After the duplicate
+  rows are removed, the same schema upgrades to `0004_canonical_catalogue_keys` and both indexes
+  are present.
+- Expanded non-sample collision coverage across draft, preview, and published products with a
+  real artisan and media row, all of which remain unchanged.
+- Added a real PostgreSQL check-constraint failure during seeding and verified the unrelated
+  `IntegrityError` propagates unchanged rather than being translated to `SeedCollisionError`.
+- Variant collision coverage now includes compare-at price and inventory preservation.
+
+### GREEN evidence
+
+```text
+17 passed in 1.97s # focused PostgreSQL migration + seed integration tests
+82 passed in 5.73s # complete Phase 1 suite
+All checks passed! # Ruff across app, tests, and migrations
+Success: no issues found in 16 source files # mypy
+```
+
+`git diff --check` reported no whitespace errors.

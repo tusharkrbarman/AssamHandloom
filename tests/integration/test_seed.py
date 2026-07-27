@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -205,16 +205,28 @@ async def test_case_only_seed_identity_changes_update_without_duplication(
     assert "Sample artisan A" in {artisan.display_name for artisan in artisans}
 
 
+@pytest.mark.parametrize(
+    "state", [PublicationState.DRAFT, PublicationState.PREVIEW, PublicationState.PUBLISHED]
+)
 @pytest.mark.anyio
-async def test_non_sample_published_product_slug_collision_is_unchanged(
-    db_session: AsyncSession, catalogue_path: Path
+async def test_non_sample_product_slug_collision_is_unchanged(
+    db_session: AsyncSession, catalogue_path: Path, state: PublicationState
 ) -> None:
+    artisan = ArtisanProfile(display_name="Verified artisan", is_sample=False)
     product = Product(
         slug="luit-dawn",
         title="Verified live product",
         silk_type="Muga",
-        publication_state=PublicationState.PUBLISHED,
+        artisan=artisan,
+        publication_state=state,
         is_sample=False,
+    )
+    product.media.append(
+        ProductMedia(
+            url="https://example.test/live.jpg",
+            alt_text="Live",
+            is_primary=True,
+        )
     )
     db_session.add(product)
     await db_session.commit()
@@ -224,9 +236,12 @@ async def test_non_sample_published_product_slug_collision_is_unchanged(
 
     persisted = await db_session.scalar(select(Product).where(Product.slug == "luit-dawn"))
     assert persisted is not None
+    await db_session.refresh(persisted, attribute_names=["artisan", "media"])
     assert persisted.title == "Verified live product"
-    assert persisted.publication_state is PublicationState.PUBLISHED
+    assert persisted.publication_state is state
     assert persisted.is_sample is False
+    assert persisted.artisan is not None and persisted.artisan.display_name == "Verified artisan"
+    assert [media.url for media in persisted.media] == ["https://example.test/live.jpg"]
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
 
 
@@ -253,6 +268,8 @@ async def test_non_sample_published_variant_sku_collision_is_unchanged(
     persisted = await db_session.scalar(select(Variant).where(Variant.sku == "RRG-MUGA-001"))
     assert persisted is not None
     assert persisted.price_minor == 999
+    assert persisted.compare_at_price_minor is None
+    assert persisted.inventory_quantity == 0
     assert persisted.publication_state is PublicationState.PUBLISHED
     assert persisted.is_sample is False
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
@@ -354,3 +371,31 @@ async def test_postgresql_enforces_canonical_slug_and_sku_uniqueness(
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
+
+
+@pytest.mark.anyio
+async def test_unrelated_integrity_error_is_not_translated_to_seed_collision(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    constraint_name = "ck_test_seed_title_rejection"
+    await db_session.execute(
+        text(
+            f"ALTER TABLE products ADD CONSTRAINT {constraint_name} "
+            "CHECK (title <> 'Luit Dawn')"
+        )
+    )
+    await db_session.commit()
+
+    try:
+        with pytest.raises(IntegrityError) as captured:
+            await load_sample_catalogue(db_session, catalogue_path)
+
+        diagnostic = getattr(captured.value.orig, "diag", None)
+        assert getattr(diagnostic, "constraint_name", None) == constraint_name
+        assert await db_session.scalar(select(func.count()).select_from(Product)) == 0
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            text(f"ALTER TABLE products DROP CONSTRAINT IF EXISTS {constraint_name}")
+        )
+        await db_session.commit()
