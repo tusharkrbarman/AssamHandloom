@@ -135,8 +135,8 @@ async def test_local_assets_and_no_javascript_navigation_fallback(app_client: As
         for source in script_sources
     )
     assert all(source and urlparse(source).path.startswith("/static/") for source in script_sources)
-    assert len(primary_links) == 5
-    assert {link.get("href") for link in primary_links} >= {"/shop", "/artisans"}
+    assert len(primary_links) == 8
+    assert {link.get("href") for link in primary_links} >= {"/artisans", "/our-story", "/journal"}
     assert {
         link.get("href") for link in document.cssselect('nav[aria-label="Footer navigation"] a')
     } == {
