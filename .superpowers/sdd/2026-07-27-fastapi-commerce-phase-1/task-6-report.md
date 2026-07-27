@@ -81,3 +81,31 @@ Success: no issues found in 16 source files # mypy
 ### Concerns
 
 - SQLite-free PostgreSQL integration coverage exercises the revised behavior. As before, direct Alembic CLI execution on this Windows host requires a selector event loop for psycopg async compatibility; Linux CI is unaffected.
+
+## Fix round 2/5 — explicit sample ownership and collision safety
+
+### RED evidence
+
+The new collision regression module initially failed collection because `SeedCollisionError` did not exist. The tests define the required behavior for non-sample product/variant collisions, preservation of an unrelated preview variant on a sample product, and case-insensitive legacy key collisions.
+
+### GREEN evidence
+
+```text
+12 passed in 1.57s # focused PostgreSQL seed suite
+77 passed in 5.63s # complete Phase 1 suite
+All checks passed! # Ruff
+Success: no issues found in 16 source files # mypy
+0003_sample_catalogue_ownership (head) # Alembic upgrade/current
+```
+
+### Self-review
+
+- Migration `0003_sample_catalogue_ownership` adds `products.is_sample` and `variants.is_sample`, both non-null and false by default. It intentionally does not infer ownership from preview state or artisan data.
+- The validated loader sets both flags only for its created or already seed-owned rows.
+- Before any mutation, canonical lower-case slug and upper-case SKU lookups reject all matching non-sample rows with clear `SeedCollisionError` messages. Product, media, artisan, publication state, price, and inventory stay untouched because the transaction has not mutated state.
+- Stale-variant reconciliation now deletes only `Variant.is_sample=true` variants on `Product.is_sample=true` products. An unrelated preview variant survives a source SKU change.
+- Sample ownership remains internal persistence data; current public sample labelling already derives safely from preview/artisan state and does not need a schema expansion.
+
+### Concerns
+
+- Existing historical rows that predate migration `0003` remain `is_sample=false` by design. The loader safely reports a collision rather than guessing ownership; operators should explicitly mark or replace legacy preview data before reseeding it.

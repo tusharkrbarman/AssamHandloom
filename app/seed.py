@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.catalog.models import (
@@ -39,6 +39,10 @@ SILK_COUNTS = {"Muga": 4, "Pat": 4, "Eri": 2, "Silk blend": 2}
 
 class CatalogueValidationError(ValueError):
     """Raised when a sample catalogue is incomplete or unsafe to load."""
+
+
+class SeedCollisionError(CatalogueValidationError):
+    """Raised when a stable seed key belongs to a non-sample record."""
 
 
 @dataclass(frozen=True)
@@ -220,10 +224,11 @@ async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult
         source_slugs = [
             _require_string(_as_object(item, "product"), "slug") for item in products_raw
         ]
+        await _preflight_seed_collisions(session, products_raw)
         previous_artisan_ids = (
             (
                 await session.scalars(
-                    select(Product.artisan_id).where(Product.slug.in_(source_slugs))
+                    select(Product.artisan_id).where(func.lower(Product.slug).in_(source_slugs))
                 )
             ).all()
         )
@@ -287,11 +292,13 @@ async def _upsert_product(
     session: AsyncSession, raw: dict[str, object], artisans: list[ArtisanProfile]
 ) -> bool:
     slug = _require_string(raw, "slug")
-    product = await session.scalar(select(Product).where(Product.slug == slug))
+    product = await _find_product_by_slug(session, slug)
     created = product is None
     if product is None:
-        product = Product(slug=slug)
+        product = Product(slug=slug, is_sample=True)
         session.add(product)
+    elif not product.is_sample:
+        raise SeedCollisionError(f"seed collision: product slug {slug!r} is not sample-owned")
     product.title = _require_string(raw, "title")
     product.description = _require_string(raw, "description")
     product.silk_type = _require_string(raw, "silk_type")
@@ -300,6 +307,7 @@ async def _upsert_product(
     product.artisan = artisans[_require_int(raw, "artisan_index")]
     product.publication_state = PublicationState.PREVIEW
     product.featured_rank = _require_int(raw, "featured_rank", positive=True)
+    product.is_sample = True
     await session.flush()
     await _replace_media(session, product, raw)
     await _upsert_variant(session, product, _as_object(raw.get("variant"), "variant"))
@@ -335,12 +343,14 @@ async def _replace_media(session: AsyncSession, product: Product, raw: dict[str,
 
 async def _upsert_variant(session: AsyncSession, product: Product, raw: dict[str, object]) -> None:
     sku = _require_string(raw, "sku")
-    variant = await session.scalar(select(Variant).where(Variant.sku == sku))
+    variant = await _find_variant_by_sku(session, sku)
     if variant is None:
-        variant = Variant(product=product, sku=sku, price_minor=0)
+        variant = Variant(product=product, sku=sku, price_minor=0, is_sample=True)
         session.add(variant)
+    elif not variant.is_sample:
+        raise SeedCollisionError(f"seed collision: variant SKU {sku!r} is not sample-owned")
     elif variant.product_id != product.id:
-        raise CatalogueValidationError("incoming SKU belongs to another product")
+        raise SeedCollisionError(f"seed collision: variant SKU {sku!r} belongs to another product")
     variant.product = product
     variant.title = _require_string(raw, "title")
     variant.price_minor = _require_int(raw, "price_minor", positive=True)
@@ -348,6 +358,7 @@ async def _upsert_variant(session: AsyncSession, product: Product, raw: dict[str
     variant.weight_grams = _require_int(raw, "weight_grams", positive=True)
     variant.inventory_quantity = _require_int(raw, "inventory_quantity")
     variant.publication_state = PublicationState.PREVIEW
+    variant.is_sample = True
     await session.flush()
     stale_variants = list(
         (await session.scalars(select(Variant).where(Variant.product_id == product.id))).all()
@@ -355,7 +366,7 @@ async def _upsert_variant(session: AsyncSession, product: Product, raw: dict[str
     for stale_variant in stale_variants:
         if (
             stale_variant.id != variant.id
-            and stale_variant.publication_state is PublicationState.PREVIEW
+            and stale_variant.is_sample
         ):
             await session.delete(stale_variant)
 
@@ -372,6 +383,44 @@ async def _remove_unreferenced_seed_artisans(
         )
         if reference is None:
             await session.delete(artisan)
+
+
+async def _preflight_seed_collisions(session: AsyncSession, products_raw: list[object]) -> None:
+    """Reject canonical stable keys claimed by non-sample data before any mutation."""
+
+    for product_raw in products_raw:
+        raw = _as_object(product_raw, "product")
+        slug = _require_string(raw, "slug")
+        product_matches = list(
+            (await session.scalars(select(Product).where(func.lower(Product.slug) == slug))).all()
+        )
+        if any(not product.is_sample for product in product_matches):
+            raise SeedCollisionError(f"seed collision: product slug {slug!r} is not sample-owned")
+        if len(product_matches) > 1:
+            raise SeedCollisionError(f"seed collision: product slug {slug!r} is ambiguous")
+        variant_raw = _as_object(raw.get("variant"), "variant")
+        sku = _require_string(variant_raw, "sku")
+        variant_matches = list(
+            (await session.scalars(select(Variant).where(func.upper(Variant.sku) == sku))).all()
+        )
+        if any(not variant.is_sample for variant in variant_matches):
+            raise SeedCollisionError(f"seed collision: variant SKU {sku!r} is not sample-owned")
+        if len(variant_matches) > 1:
+            raise SeedCollisionError(f"seed collision: variant SKU {sku!r} is ambiguous")
+
+
+async def _find_product_by_slug(session: AsyncSession, slug: str) -> Product | None:
+    matches = list(
+        (await session.scalars(select(Product).where(func.lower(Product.slug) == slug))).all()
+    )
+    return matches[0] if matches else None
+
+
+async def _find_variant_by_sku(session: AsyncSession, sku: str) -> Variant | None:
+    matches = list(
+        (await session.scalars(select(Variant).where(func.upper(Variant.sku) == sku))).all()
+    )
+    return matches[0] if matches else None
 
 
 def run() -> None:

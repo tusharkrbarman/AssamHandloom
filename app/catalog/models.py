@@ -92,6 +92,9 @@ class Product(Timestamped, Base):
     featured_rank: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    is_sample: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     artisan: Mapped[ArtisanProfile | None] = relationship(back_populates="products")
     variants: Mapped[list[Variant]] = relationship(
@@ -146,6 +149,9 @@ class Variant(Timestamped, Base):
         nullable=False,
         default=PublicationState.DRAFT,
         server_default="draft",
+    )
+    is_sample: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
 
     product: Mapped[Product] = relationship(back_populates="variants")

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.catalog.models import ArtisanProfile, Product, ProductMedia, PublicationState, Variant
 from app.catalog.repository import CatalogRepository
 from app.catalog.schemas import ProductListQuery
-from app.seed import CatalogueValidationError, load_sample_catalogue
+from app.seed import CatalogueValidationError, SeedCollisionError, load_sample_catalogue
 
 
 @pytest.fixture
@@ -79,6 +79,8 @@ async def test_seeded_records_are_complete_and_explicitly_sample(
     assert len({variant.sku for variant in variants}) == 12
     assert all(product.publication_state is PublicationState.PREVIEW for product in products)
     assert all(variant.publication_state is PublicationState.PREVIEW for variant in variants)
+    assert all(product.is_sample for product in products)
+    assert all(variant.is_sample for variant in variants)
     assert all(artisan.is_sample for artisan in artisans)
     assert len(media) >= 12
     assert all("sample placeholder" in (item.alt_text or "").lower() for item in media)
@@ -200,3 +202,131 @@ async def test_case_only_seed_identity_changes_update_without_duplication(
     assert {product.slug for product in products} >= {"luit-dawn"}
     assert {variant.sku for variant in variants} >= {"RRG-MUGA-001"}
     assert "Sample artisan A" in {artisan.display_name for artisan in artisans}
+
+
+@pytest.mark.anyio
+async def test_non_sample_published_product_slug_collision_is_unchanged(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    product = Product(
+        slug="luit-dawn",
+        title="Verified live product",
+        silk_type="Muga",
+        publication_state=PublicationState.PUBLISHED,
+        is_sample=False,
+    )
+    db_session.add(product)
+    await db_session.commit()
+
+    with pytest.raises(SeedCollisionError, match="product slug"):
+        await load_sample_catalogue(db_session, catalogue_path)
+
+    persisted = await db_session.scalar(select(Product).where(Product.slug == "luit-dawn"))
+    assert persisted is not None
+    assert persisted.title == "Verified live product"
+    assert persisted.publication_state is PublicationState.PUBLISHED
+    assert persisted.is_sample is False
+    assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
+
+
+@pytest.mark.anyio
+async def test_non_sample_published_variant_sku_collision_is_unchanged(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    product = Product(slug="verified-live", title="Verified live", silk_type="Pat", is_sample=False)
+    db_session.add(
+        Variant(
+            product=product,
+            sku="RRG-MUGA-001",
+            price_minor=999,
+            currency="INR",
+            publication_state=PublicationState.PUBLISHED,
+            is_sample=False,
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(SeedCollisionError, match="variant SKU"):
+        await load_sample_catalogue(db_session, catalogue_path)
+
+    persisted = await db_session.scalar(select(Variant).where(Variant.sku == "RRG-MUGA-001"))
+    assert persisted is not None
+    assert persisted.price_minor == 999
+    assert persisted.publication_state is PublicationState.PUBLISHED
+    assert persisted.is_sample is False
+    assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
+
+
+@pytest.mark.anyio
+async def test_unrelated_preview_variant_on_sample_product_survives_sku_evolution(
+    db_session: AsyncSession, catalogue_path: Path, tmp_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    product = await db_session.scalar(select(Product).where(Product.slug == "luit-dawn"))
+    assert product is not None
+    unrelated = Variant(
+        product=product,
+        sku="UNRELATED-PREVIEW",
+        price_minor=1,
+        currency="INR",
+        publication_state=PublicationState.PREVIEW,
+        is_sample=False,
+    )
+    db_session.add(unrelated)
+    await db_session.commit()
+    updated_path = _mutated_catalogue(
+        tmp_path,
+        lambda catalogue: catalogue["products"][0]["variant"].update({"sku": "RRG-MUGA-099"}),
+    )
+
+    await load_sample_catalogue(db_session, updated_path)
+
+    persisted = await db_session.scalar(
+        select(Variant).where(Variant.sku == "UNRELATED-PREVIEW")
+    )
+    assert persisted is not None
+    assert persisted.is_sample is False
+    assert persisted.publication_state is PublicationState.PREVIEW
+
+
+@pytest.mark.anyio
+async def test_case_insensitive_legacy_product_slug_collision_writes_nothing(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    db_session.add(
+        Product(
+            slug="LUIT-DAWN",
+            title="Legacy live product",
+            silk_type="Muga",
+            is_sample=False,
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(SeedCollisionError, match="product slug"):
+        await load_sample_catalogue(db_session, catalogue_path)
+
+    assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
+
+
+@pytest.mark.anyio
+async def test_case_insensitive_legacy_variant_sku_collision_writes_nothing(
+    db_session: AsyncSession, catalogue_path: Path
+) -> None:
+    product = Product(slug="legacy", title="Legacy", silk_type="Pat", is_sample=False)
+    db_session.add(
+        Variant(
+            product=product,
+            sku="rrg-muga-001",
+            price_minor=55,
+            currency="INR",
+            is_sample=False,
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(SeedCollisionError, match="variant SKU"):
+        await load_sample_catalogue(db_session, catalogue_path)
+
+    assert await db_session.scalar(select(func.count()).select_from(Product)) == 1
+    assert await db_session.scalar(select(func.count()).select_from(Variant)) == 1
