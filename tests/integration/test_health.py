@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import sys
+
 import pytest
 from pydantic import ValidationError
 
@@ -41,4 +44,12 @@ def test_settings_rejects_non_postgresql_database_outside_test_environment():
             environment="development",
             public_base_url="http://localhost:8000",
             catalogue_preview_enabled=True,
+        )
+
+
+def test_windows_uses_selector_event_loop_policy_for_psycopg():
+    if sys.platform == "win32":
+        assert isinstance(
+            asyncio.get_event_loop_policy(),
+            asyncio.WindowsSelectorEventLoopPolicy,
         )

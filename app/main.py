@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import sys
+
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import Settings, get_settings
 from app.health import health_router
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

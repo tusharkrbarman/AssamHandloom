@@ -52,7 +52,7 @@ def test_database_url() -> Generator[str, None, None]:
     asyncio.run(create_schema())
     schema_url = _url_for_schema(database_url, schema_name)
     alembic_config = Config("alembic.ini")
-    alembic_config.set_main_option("sqlalchemy.url", schema_url)
+    alembic_config.set_main_option("sqlalchemy.url", schema_url.replace("%", "%%"))
     command.upgrade(alembic_config, "head")
 
     try:
