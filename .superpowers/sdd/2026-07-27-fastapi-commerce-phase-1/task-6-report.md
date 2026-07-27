@@ -45,3 +45,39 @@ The migration upgrade/current check used the Windows selector event-loop policy 
 
 - Direct `alembic` CLI execution on this Windows environment needs a selector event-loop policy for psycopg async compatibility. This does not affect Linux CI; the clean PostgreSQL schema upgrade is exercised by tests and verified locally through the compatible wrapper.
 - The current persistence model has no provenance table. Accordingly, source provenance remains explicitly labelled, unverified sample metadata and is deliberately not promoted into a verified public claim.
+
+## Fix round 1/5 — seed evolution and validation hardening
+
+### RED evidence
+
+Focused seed tests initially produced six expected failures:
+
+- duplicate media `display_order` and case-folded slug duplicates passed validation;
+- a SKU change left 13 variants instead of 12;
+- a renamed source artisan left the old sample profile behind;
+- invalid duplicate media reached PostgreSQL and raised a unique-constraint error after writes began;
+- case-only slug/SKU/artisan changes created a duplicate product.
+
+### GREEN evidence
+
+After the reconciliation and boundary-validation changes:
+
+```text
+11 passed in 1.08s  # focused seed unit + PostgreSQL integration tests
+72 passed in 4.53s # complete Phase 1 suite
+All checks passed! # Ruff
+Success: no issues found in 16 source files # mypy
+0002_catalogue (head) # Alembic current
+```
+
+### Self-review
+
+- Slugs are trimmed/lower-cased and SKUs trimmed/upper-cased before validation; product titles are not transformed.
+- Duplicate slugs, SKUs, artisan identities, featured ranks, and per-product media display orders are rejected before `session.begin`.
+- Incoming SKU resolution occurs before stale **preview** variants are deleted. Published or otherwise non-preview variants are not removed.
+- The loader captures artisan IDs previously associated with the incoming seeded slugs, reassigns the source products, then deletes only unreferenced sample artisan profiles. Profiles still referenced by unrelated products remain intact.
+- Added front-loaded checks for negative inventory and exactly one primary placeholder-media record per product.
+
+### Concerns
+
+- SQLite-free PostgreSQL integration coverage exercises the revised behavior. As before, direct Alembic CLI execution on this Windows host requires a selector event loop for psycopg async compatibility; Linux CI is unaffected.

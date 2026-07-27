@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import copy
+import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -9,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.catalog.models import ArtisanProfile, Product, ProductMedia, PublicationState, Variant
 from app.catalog.repository import CatalogRepository
 from app.catalog.schemas import ProductListQuery
-from app.seed import load_sample_catalogue
+from app.seed import CatalogueValidationError, load_sample_catalogue
 
 
 @pytest.fixture
@@ -87,3 +91,112 @@ async def test_seeded_records_are_complete_and_explicitly_sample(
     )
     assert all(product.description and product.colour and product.occasion for product in products)
     assert await db_session.scalar(select(func.count()).select_from(Product)) == 12
+
+
+def _mutated_catalogue(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], object]
+) -> Path:
+    source_path = Path(__file__).parents[2] / "data" / "river-reed-gold.json"
+    catalogue = json.loads(source_path.read_text())
+    mutate(catalogue)
+    path = tmp_path / "mutated-catalogue.json"
+    path.write_text(json.dumps(catalogue), encoding="utf-8")
+    return path
+
+
+@pytest.mark.anyio
+async def test_reseed_replaces_a_changed_sample_sku_without_stale_variants(
+    db_session: AsyncSession, catalogue_path: Path, tmp_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    old_sku = "RRG-MUGA-001"
+    new_sku = "RRG-MUGA-099"
+    updated_path = _mutated_catalogue(
+        tmp_path, lambda catalogue: catalogue["products"][0]["variant"].update({"sku": new_sku})
+    )
+
+    result = await load_sample_catalogue(db_session, updated_path)
+    variants = list((await db_session.scalars(select(Variant))).all())
+
+    assert result.products_created == 0
+    assert result.products_updated == 12
+    assert len(variants) == 12
+    assert {variant.sku for variant in variants}.isdisjoint({old_sku})
+    assert new_sku in {variant.sku for variant in variants}
+    assert all(variant.publication_state is PublicationState.PREVIEW for variant in variants)
+
+
+@pytest.mark.anyio
+async def test_reseed_removes_unreferenced_renamed_sample_artisan_but_keeps_shared_profiles(
+    db_session: AsyncSession, catalogue_path: Path, tmp_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    old_name = "Sample artisan A"
+    shared = ArtisanProfile(display_name="Shared sample profile", is_sample=True)
+    unrelated = Product(
+        slug="unrelated-sample",
+        title="Unrelated sample",
+        silk_type="Muga",
+        artisan=shared,
+        publication_state=PublicationState.DRAFT,
+    )
+    db_session.add(unrelated)
+    await db_session.commit()
+    updated_path = _mutated_catalogue(
+        tmp_path,
+        lambda catalogue: catalogue["artisans"][0].update(
+            {"display_name": "Renamed sample artisan"}
+        ),
+    )
+
+    await load_sample_catalogue(db_session, updated_path)
+    artisan_names = set((await db_session.scalars(select(ArtisanProfile.display_name))).all())
+
+    assert old_name not in artisan_names
+    assert "Renamed sample artisan" in artisan_names
+    assert "Shared sample profile" in artisan_names
+
+
+@pytest.mark.anyio
+async def test_duplicate_media_order_is_rejected_before_any_database_writes(
+    db_session: AsyncSession, catalogue_path: Path, tmp_path: Path
+) -> None:
+    invalid_path = _mutated_catalogue(
+        tmp_path,
+        lambda catalogue: catalogue["products"][0]["media"].append(
+            copy.deepcopy(catalogue["products"][0]["media"][0])
+        ),
+    )
+
+    with pytest.raises(CatalogueValidationError, match="display_order"):
+        await load_sample_catalogue(db_session, invalid_path)
+
+    assert await db_session.scalar(select(func.count()).select_from(Product)) == 0
+
+
+@pytest.mark.anyio
+async def test_case_only_seed_identity_changes_update_without_duplication(
+    db_session: AsyncSession, catalogue_path: Path, tmp_path: Path
+) -> None:
+    await load_sample_catalogue(db_session, catalogue_path)
+    updated_path = _mutated_catalogue(
+        tmp_path,
+        lambda catalogue: (
+            catalogue["products"][0].update({"slug": "LUIT-DAWN"}),
+            catalogue["products"][0]["variant"].update({"sku": "rrg-muga-001"}),
+            catalogue["artisans"][0].update({"display_name": " sample ARTISAN a "}),
+        ),
+    )
+
+    result = await load_sample_catalogue(db_session, updated_path)
+    products = list((await db_session.scalars(select(Product))).all())
+    variants = list((await db_session.scalars(select(Variant))).all())
+    artisans = list((await db_session.scalars(select(ArtisanProfile))).all())
+
+    assert result.products_created == 0
+    assert result.products_updated == 12
+    assert len(products) == 12
+    assert len(variants) == 12
+    assert {product.slug for product in products} >= {"luit-dawn"}
+    assert {variant.sku for variant in variants} >= {"RRG-MUGA-001"}
+    assert "Sample artisan A" in {artisan.display_name for artisan in artisans}

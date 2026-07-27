@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,7 @@ def validate_catalogue(path: Path) -> dict[str, object]:
         raise CatalogueValidationError(f"cannot read sample catalogue: {error}") from error
     if not isinstance(raw, dict):
         raise CatalogueValidationError("catalogue root must be an object")
+    _normalise_stable_identities(raw)
     artisans = raw.get("artisans")
     products = raw.get("products")
     if not isinstance(artisans, list) or not isinstance(products, list):
@@ -81,6 +83,34 @@ def _require_int(record: dict[str, object], field: str, *, positive: bool = Fals
     return value
 
 
+def _normalise_identity(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def _normalise_stable_identities(catalogue: dict[str, object]) -> None:
+    """Canonicalise machine keys and trim display identities without changing product titles."""
+
+    artisans = catalogue.get("artisans")
+    products = catalogue.get("products")
+    if isinstance(artisans, list):
+        for artisan_raw in artisans:
+            artisan = _as_object(artisan_raw, "artisan")
+            name = artisan.get("display_name")
+            if isinstance(name, str):
+                artisan["display_name"] = " ".join(name.split())
+    if isinstance(products, list):
+        for product_raw in products:
+            product = _as_object(product_raw, "product")
+            slug = product.get("slug")
+            if isinstance(slug, str):
+                product["slug"] = slug.strip().lower()
+            variant_raw = product.get("variant")
+            if isinstance(variant_raw, dict):
+                sku = variant_raw.get("sku")
+                if isinstance(sku, str):
+                    variant_raw["sku"] = sku.strip().upper()
+
+
 def _as_object(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise CatalogueValidationError(f"{field} must be an object")
@@ -90,12 +120,17 @@ def _as_object(value: object, field: str) -> dict[str, object]:
 def _validate_artisans(artisans: list[object]) -> None:
     if not artisans:
         raise CatalogueValidationError("catalogue requires sample artisans")
+    identities: set[str] = set()
     for artisan_raw in artisans:
         artisan = _as_object(artisan_raw, "artisan")
         for field in ("display_name", "biography", "location", "portrait_url"):
             _require_string(artisan, field)
         if artisan.get("is_sample") is not True:
             raise CatalogueValidationError("every artisan must be explicitly sample")
+        identity = _normalise_identity(_require_string(artisan, "display_name"))
+        if identity in identities:
+            raise CatalogueValidationError("artisan identities must be unique")
+        identities.add(identity)
 
 
 def _validate_products(products: list[object], artisan_count: int) -> None:
@@ -103,6 +138,7 @@ def _validate_products(products: list[object], artisan_count: int) -> None:
     skus: set[str] = set()
     titles: set[str] = set()
     silk_counts: dict[str, int] = {}
+    featured_ranks: set[int] = set()
     for product_raw in products:
         product = _as_object(product_raw, "product")
         for field in ("slug", "title", "description", "silk_type", "colour", "occasion"):
@@ -117,6 +153,10 @@ def _validate_products(products: list[object], artisan_count: int) -> None:
             raise CatalogueValidationError("every product must be explicitly sample")
         if product.get("publication_state") != PublicationState.PREVIEW.value:
             raise CatalogueValidationError("sample products must remain preview-only")
+        featured_rank = _require_int(product, "featured_rank", positive=True)
+        if featured_rank in featured_ranks:
+            raise CatalogueValidationError("featured ranks must be unique")
+        featured_ranks.add(featured_rank)
         artisan_index = _require_int(product, "artisan_index")
         if not 0 <= artisan_index < artisan_count:
             raise CatalogueValidationError("product artisan reference is invalid")
@@ -131,13 +171,22 @@ def _validate_products(products: list[object], artisan_count: int) -> None:
         media = product.get("media")
         if not isinstance(media, list) or not media:
             raise CatalogueValidationError("each product requires placeholder media")
+        media_orders: set[int] = set()
+        primary_count = 0
         for media_raw in media:
             item = _as_object(media_raw, "media")
             for field in ("url", "alt_text"):
                 _require_string(item, field)
-            _require_int(item, "display_order", positive=True)
+            display_order = _require_int(item, "display_order", positive=True)
+            if display_order in media_orders:
+                raise CatalogueValidationError("media display_order values must be unique")
+            media_orders.add(display_order)
+            if item.get("is_primary") is True:
+                primary_count += 1
             if item.get("is_placeholder") is not True:
                 raise CatalogueValidationError("every media item must be a placeholder")
+        if primary_count != 1:
+            raise CatalogueValidationError("each product requires exactly one primary media item")
         variant = _as_object(product.get("variant"), "variant")
         sku = _require_string(variant, "sku")
         if sku in skus:
@@ -146,7 +195,8 @@ def _validate_products(products: list[object], artisan_count: int) -> None:
         _require_string(variant, "title")
         _require_int(variant, "price_minor", positive=True)
         _require_int(variant, "weight_grams", positive=True)
-        _require_int(variant, "inventory_quantity")
+        if _require_int(variant, "inventory_quantity") < 0:
+            raise CatalogueValidationError("inventory_quantity must not be negative")
         if variant.get("currency") != "INR":
             raise CatalogueValidationError("sample prices must be integer INR")
         if variant.get("publication_state") != PublicationState.PREVIEW.value:
@@ -167,6 +217,19 @@ async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult
     assert isinstance(artisans_raw, list)
     assert isinstance(products_raw, list)
     async with session.begin():
+        source_slugs = [
+            _require_string(_as_object(item, "product"), "slug") for item in products_raw
+        ]
+        previous_artisan_ids = (
+            (
+                await session.scalars(
+                    select(Product.artisan_id).where(Product.slug.in_(source_slugs))
+                )
+            ).all()
+        )
+        stale_artisan_ids = {
+            artisan_id for artisan_id in previous_artisan_ids if artisan_id is not None
+        }
         artisans = await _upsert_artisans(session, artisans_raw)
         result = SeedResult()
         for product_raw in products_raw:
@@ -176,6 +239,8 @@ async def load_sample_catalogue(session: AsyncSession, path: Path) -> SeedResult
                 products_created=result.products_created + int(created),
                 products_updated=result.products_updated + int(not created),
             )
+        await session.flush()
+        await _remove_unreferenced_seed_artisans(session, stale_artisan_ids)
     return result
 
 
@@ -186,9 +251,7 @@ async def _upsert_artisans(
     for artisan_raw in artisans_raw:
         raw = _as_object(artisan_raw, "artisan")
         name = _require_string(raw, "display_name")
-        artisan = await session.scalar(
-            select(ArtisanProfile).where(ArtisanProfile.display_name == name)
-        )
+        artisan = await _find_sample_artisan(session, name)
         if artisan is None:
             artisan = ArtisanProfile(display_name=name)
             session.add(artisan)
@@ -199,6 +262,25 @@ async def _upsert_artisans(
         artisans.append(artisan)
     await session.flush()
     return artisans
+
+
+async def _find_sample_artisan(session: AsyncSession, name: str) -> ArtisanProfile | None:
+    identity = _normalise_identity(name)
+    candidates = list(
+        (
+            await session.scalars(
+                select(ArtisanProfile).where(ArtisanProfile.is_sample.is_(True))
+            )
+        ).all()
+    )
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if _normalise_identity(candidate.display_name) == identity
+        ),
+        None,
+    )
 
 
 async def _upsert_product(
@@ -257,6 +339,8 @@ async def _upsert_variant(session: AsyncSession, product: Product, raw: dict[str
     if variant is None:
         variant = Variant(product=product, sku=sku, price_minor=0)
         session.add(variant)
+    elif variant.product_id != product.id:
+        raise CatalogueValidationError("incoming SKU belongs to another product")
     variant.product = product
     variant.title = _require_string(raw, "title")
     variant.price_minor = _require_int(raw, "price_minor", positive=True)
@@ -264,6 +348,30 @@ async def _upsert_variant(session: AsyncSession, product: Product, raw: dict[str
     variant.weight_grams = _require_int(raw, "weight_grams", positive=True)
     variant.inventory_quantity = _require_int(raw, "inventory_quantity")
     variant.publication_state = PublicationState.PREVIEW
+    await session.flush()
+    stale_variants = list(
+        (await session.scalars(select(Variant).where(Variant.product_id == product.id))).all()
+    )
+    for stale_variant in stale_variants:
+        if (
+            stale_variant.id != variant.id
+            and stale_variant.publication_state is PublicationState.PREVIEW
+        ):
+            await session.delete(stale_variant)
+
+
+async def _remove_unreferenced_seed_artisans(
+    session: AsyncSession, artisan_ids: set[uuid.UUID]
+) -> None:
+    for artisan_id in artisan_ids:
+        artisan = await session.get(ArtisanProfile, artisan_id)
+        if artisan is None or not artisan.is_sample:
+            continue
+        reference = await session.scalar(
+            select(Product.id).where(Product.artisan_id == artisan.id).limit(1)
+        )
+        if reference is None:
+            await session.delete(artisan)
 
 
 def run() -> None:

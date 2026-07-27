@@ -37,3 +37,27 @@ def test_catalogue_validation_rejects_duplicate_stable_identifiers(tmp_path: Pat
 
     with pytest.raises(CatalogueValidationError, match="unique"):
         validate_catalogue(path)
+
+
+def test_catalogue_validation_rejects_casefolded_duplicate_media_orders(tmp_path: Path) -> None:
+    catalogue = _catalogue()
+    products = catalogue["products"]
+    assert isinstance(products, list)
+    products[0]["media"].append({**products[0]["media"][0], "url": "https://example.test/other"})
+    path = tmp_path / "catalogue.json"
+    path.write_text(json.dumps(catalogue), encoding="utf-8")
+
+    with pytest.raises(CatalogueValidationError, match="display_order"):
+        validate_catalogue(path)
+
+
+def test_catalogue_validation_rejects_casefold_duplicate_stable_identifiers(tmp_path: Path) -> None:
+    catalogue = _catalogue()
+    products = catalogue["products"]
+    assert isinstance(products, list)
+    products[1]["slug"] = products[0]["slug"].upper()
+    path = tmp_path / "catalogue.json"
+    path.write_text(json.dumps(catalogue), encoding="utf-8")
+
+    with pytest.raises(CatalogueValidationError, match="unique"):
+        validate_catalogue(path)
