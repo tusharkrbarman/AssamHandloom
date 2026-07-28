@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "luit-and-loom",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-28",
+  "assets": {
+    "directory": "./app/static",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "luit-and-loom",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "d1-migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "luit-and-loom-media"
+    }
+  ],
+  "secrets": {
+    "required": [
+      "ADMIN_SETUP_TOKEN",
+      "ADMIN_RECOVERY_TOKEN",
+      "COOKIE_SIGNING_KEY"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
