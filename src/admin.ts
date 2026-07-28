@@ -71,7 +71,7 @@ function stateOptions(selected: PublicationState): string {
     .join("");
 }
 
-function adminPage(
+export function adminPage(
   title: string,
   body: string,
   authenticated: AuthenticatedOwner,
@@ -92,6 +92,7 @@ function adminPage(
     <a class="wordmark" href="/">Luit <span>&amp;</span> Loom</a>
     <nav aria-label="Owner navigation">
       <a href="/admin">Products</a> <a href="/admin/collections">Collections</a>
+      <a href="/admin/inventory">Inventory</a>
       <form method="post" action="/admin/logout" style="display:inline">
         <input type="hidden" name="csrf" value="${escapeHtml(authenticated.session.csrf)}">
         <button type="submit">Sign out</button>
@@ -110,7 +111,7 @@ function adminPage(
   );
 }
 
-async function audit(
+export async function audit(
   db: D1Database,
   action: string,
   targetType: string,

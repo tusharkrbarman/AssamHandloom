@@ -1,6 +1,7 @@
 import { routeAdmin } from "./admin";
 import { routeAuth } from "./auth";
 import { HttpError, json } from "./http";
+import { routeInventory } from "./inventory";
 import { renderStorefrontError, routeStorefront } from "./storefront";
 
 interface RequestLog {
@@ -32,6 +33,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const auth = await routeAuth(request, env);
   if (auth) {
     return auth;
+  }
+  const inventory = await routeInventory(request, env);
+  if (inventory) {
+    return inventory;
   }
   const admin = await routeAdmin(request, env);
   if (admin) {
