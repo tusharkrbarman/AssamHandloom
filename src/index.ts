@@ -2,6 +2,7 @@ import { routeAdmin } from "./admin";
 import { routeAuth } from "./auth";
 import { HttpError, json } from "./http";
 import { routeInventory } from "./inventory";
+import { routeMedia } from "./media";
 import { renderStorefrontError, routeStorefront } from "./storefront";
 
 interface RequestLog {
@@ -29,6 +30,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") {
     return health(env);
+  }
+  const media = await routeMedia(request, env);
+  if (media) {
+    return media;
   }
   const auth = await routeAuth(request, env);
   if (auth) {

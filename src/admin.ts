@@ -44,6 +44,11 @@ interface CollectionRow {
   selected?: number;
 }
 
+interface MediaRow {
+  id: string;
+  alt_text: string;
+}
+
 function text(form: FormData, key: string): string {
   const value = form.get(key);
   return typeof value === "string" ? value : "";
@@ -217,7 +222,7 @@ async function productPage(
     .bind(id)
     .first<ProductRow>();
   if (!product) throw new HttpError(404, "product_not_found", "Product not found.");
-  const [variantResult, collectionResult] = await env.DB.batch([
+  const [variantResult, collectionResult, mediaResult] = await env.DB.batch([
     env.DB.prepare("SELECT * FROM variants WHERE product_id = ? ORDER BY created_at").bind(id),
     env.DB
       .prepare(
@@ -228,12 +233,18 @@ async function productPage(
         ORDER BY collection.display_order, collection.id`,
       )
       .bind(id),
+    env.DB
+      .prepare(
+        "SELECT id, alt_text FROM product_media WHERE product_id = ? ORDER BY display_order, id",
+      )
+      .bind(id),
   ]);
-  if (!variantResult || !collectionResult) {
+  if (!variantResult || !collectionResult || !mediaResult) {
     throw new HttpError(500, "catalogue_read_failed", "Product details are unavailable.");
   }
   const variants = variantResult.results as unknown as VariantRow[];
   const collections = collectionResult.results as unknown as CollectionRow[];
+  const media = mediaResult.results as unknown as MediaRow[];
   const variantForms = variants
     .map((variant) =>
       variantForm(variant, owner.session.csrf, `/admin/variants/${variant.id}`),
@@ -244,6 +255,18 @@ async function productPage(
       (collection) => `<label><input type="checkbox" name="product_id" value="${collection.id}"${collection.selected ? " checked" : ""}> ${escapeHtml(collection.title)}</label>`,
     )
     .join("");
+  const mediaCards = media
+    .map(
+      (item) => `<figure>
+        <img src="/admin/media/${item.id}/content" alt="${escapeHtml(item.alt_text)}" width="240" height="300">
+        <figcaption>${escapeHtml(item.alt_text)}</figcaption>
+        <form method="post" action="/admin/media/${item.id}/delete">
+          <input type="hidden" name="csrf" value="${escapeHtml(owner.session.csrf)}">
+          <button type="submit">Delete image</button>
+        </form>
+      </figure>`,
+    )
+    .join("");
   return adminPage(
     product.title,
     `${productForm(product, owner.session.csrf)}
@@ -251,6 +274,14 @@ async function productPage(
     ${variantForms}
     <h3>Add variant</h3>
     ${variantForm(null, owner.session.csrf, `/admin/products/${id}/variants`)}
+    <h2>Images</h2>
+    ${mediaCards || "<p>No images yet.</p>"}
+    <form method="post" action="/admin/products/${id}/media" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="${escapeHtml(owner.session.csrf)}">
+      <label>Image <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required></label>
+      <label>Alternative text <input name="alt_text" maxlength="300" required></label>
+      <button type="submit">Add image</button>
+    </form>
     <h2>Collections</h2>
     <form method="post" action="/admin/products/${id}/collections">
       <input type="hidden" name="csrf" value="${escapeHtml(owner.session.csrf)}">
