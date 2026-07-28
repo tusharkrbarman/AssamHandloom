@@ -1,3 +1,4 @@
+import { routeAdmin } from "./admin";
 import { routeAuth } from "./auth";
 import { HttpError, json } from "./http";
 import { renderStorefrontError, routeStorefront } from "./storefront";
@@ -31,6 +32,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const auth = await routeAuth(request, env);
   if (auth) {
     return auth;
+  }
+  const admin = await routeAdmin(request, env);
+  if (admin) {
+    return admin;
   }
   const storefront = await routeStorefront(request, env);
   if (storefront) {

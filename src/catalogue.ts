@@ -60,6 +60,38 @@ export interface Page<T> {
   total: number;
 }
 
+export interface ProductInput {
+  id: string | null;
+  slug: string;
+  title: string;
+  description: string;
+  silkType: string;
+  colour: string | null;
+  occasion: string | null;
+  publicationState: PublicationState;
+  featuredRank: number;
+}
+
+export interface VariantInput {
+  id: string | null;
+  productId: string;
+  sku: string;
+  title: string;
+  priceMinor: number;
+  currency: string;
+  weightGrams: number | null;
+  publicationState: PublicationState;
+}
+
+export interface CollectionInput {
+  id: string | null;
+  slug: string;
+  title: string;
+  description: string;
+  publicationState: PublicationState;
+  displayOrder: number;
+}
+
 interface ProductCardRow {
   id: string;
   slug: string;
@@ -422,4 +454,225 @@ export function formatMoney(priceMinor: number, currency: string): string {
     minimumFractionDigits: priceMinor % 100 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(priceMinor / 100);
+}
+
+function requiredText(value: string, name: string, maximum: number): string {
+  const clean = value.trim().replace(/\s+/g, " ");
+  if (!clean || clean.length > maximum) {
+    throw new HttpError(422, "invalid_catalogue_input", `${name} is invalid.`);
+  }
+  return clean;
+}
+
+function optionalText(value: string | null, name: string, maximum: number): string | null {
+  if (value === null || value.trim() === "") return null;
+  return requiredText(value, name, maximum);
+}
+
+function validDescription(value: string): string {
+  const clean = value.trim();
+  if (clean.length > 5_000) {
+    throw new HttpError(422, "invalid_catalogue_input", "Description is invalid.");
+  }
+  return clean;
+}
+
+function validSlug(value: string): string {
+  const slug = value.trim().toLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new HttpError(422, "invalid_catalogue_input", "Slug is invalid.");
+  }
+  return slug;
+}
+
+function validState(value: PublicationState): PublicationState {
+  if (value !== "draft" && value !== "published") {
+    throw new HttpError(422, "invalid_catalogue_input", "Publication state is invalid.");
+  }
+  return value;
+}
+
+function safeInteger(value: number, name: string, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    throw new HttpError(422, "invalid_catalogue_input", `${name} is invalid.`);
+  }
+  return value;
+}
+
+function catalogueWriteError(error: unknown): never {
+  if (error instanceof HttpError) throw error;
+  if (error instanceof Error && /unique constraint failed/i.test(error.message)) {
+    throw new HttpError(409, "catalogue_conflict", "That slug or SKU is already in use.");
+  }
+  throw new HttpError(422, "catalogue_write_failed", "The catalogue change could not be saved.");
+}
+
+export async function saveProduct(db: D1Database, input: ProductInput): Promise<string> {
+  const id = input.id ?? crypto.randomUUID();
+  const values = [
+    validSlug(input.slug),
+    requiredText(input.title, "Title", 160),
+    validDescription(input.description),
+    requiredText(input.silkType, "Silk type", 80),
+    optionalText(input.colour, "Colour", 80),
+    optionalText(input.occasion, "Occasion", 80),
+    validState(input.publicationState),
+    safeInteger(input.featuredRank, "Featured rank"),
+  ] as const;
+  const now = new Date().toISOString();
+  try {
+    if (input.id) {
+      const result = await db
+        .prepare(
+          `UPDATE products SET
+            slug = ?, title = ?, description = ?, silk_type = ?, colour = ?,
+            occasion = ?, publication_state = ?, featured_rank = ?, updated_at = ?
+          WHERE id = ? AND archived_at IS NULL`,
+        )
+        .bind(...values, now, id)
+        .run();
+      if (result.meta.changes === 0) {
+        throw new HttpError(404, "product_not_found", "Product not found.");
+      }
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO products (
+            id, slug, title, description, silk_type, colour, occasion,
+            publication_state, featured_rank, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(id, ...values, now, now)
+        .run();
+    }
+    return id;
+  } catch (error) {
+    catalogueWriteError(error);
+  }
+}
+
+export async function archiveProduct(db: D1Database, id: string): Promise<void> {
+  const result = await db
+    .prepare("UPDATE products SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL")
+    .bind(new Date().toISOString(), new Date().toISOString(), id)
+    .run();
+  if (result.meta.changes === 0) {
+    throw new HttpError(404, "product_not_found", "Product not found.");
+  }
+}
+
+export async function saveVariant(db: D1Database, input: VariantInput): Promise<string> {
+  const id = input.id ?? crypto.randomUUID();
+  const sku = requiredText(input.sku, "SKU", 80);
+  const title = requiredText(input.title, "Title", 160);
+  const price = safeInteger(input.priceMinor, "Price");
+  const currency = input.currency.trim();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new HttpError(422, "invalid_catalogue_input", "Currency is invalid.");
+  }
+  const weight =
+    input.weightGrams === null ? null : safeInteger(input.weightGrams, "Weight", 1);
+  const state = validState(input.publicationState);
+  const now = new Date().toISOString();
+  try {
+    if (input.id) {
+      const result = await db
+        .prepare(
+          `UPDATE variants SET
+            sku = ?, title = ?, price_minor = ?, currency = ?, weight_grams = ?,
+            publication_state = ?, updated_at = ?
+          WHERE id = ? AND product_id = ?`,
+        )
+        .bind(sku, title, price, currency, weight, state, now, id, input.productId)
+        .run();
+      if (result.meta.changes === 0) {
+        throw new HttpError(404, "variant_not_found", "Variant not found.");
+      }
+    } else {
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO variants (
+              id, product_id, sku, title, price_minor, currency, weight_grams,
+              publication_state, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(id, input.productId, sku, title, price, currency, weight, state, now, now),
+        db
+          .prepare(
+            "INSERT INTO inventory_items (variant_id, quantity, version, updated_at) VALUES (?, 0, 0, ?)",
+          )
+          .bind(id, now),
+      ]);
+    }
+    return id;
+  } catch (error) {
+    catalogueWriteError(error);
+  }
+}
+
+export async function saveCollection(
+  db: D1Database,
+  input: CollectionInput,
+): Promise<string> {
+  const id = input.id ?? crypto.randomUUID();
+  const values = [
+    validSlug(input.slug),
+    requiredText(input.title, "Title", 160),
+    validDescription(input.description),
+    validState(input.publicationState),
+    safeInteger(input.displayOrder, "Display order"),
+  ] as const;
+  const now = new Date().toISOString();
+  try {
+    if (input.id) {
+      const result = await db
+        .prepare(
+          `UPDATE collections SET
+            slug = ?, title = ?, description = ?, publication_state = ?,
+            display_order = ?, updated_at = ?
+          WHERE id = ?`,
+        )
+        .bind(...values, now, id)
+        .run();
+      if (result.meta.changes === 0) {
+        throw new HttpError(404, "collection_not_found", "Collection not found.");
+      }
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO collections (
+            id, slug, title, description, publication_state, display_order,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(id, ...values, now, now)
+        .run();
+    }
+    return id;
+  } catch (error) {
+    catalogueWriteError(error);
+  }
+}
+
+export async function setCollectionProducts(
+  db: D1Database,
+  productId: string,
+  collectionIds: string[],
+): Promise<void> {
+  const uniqueIds = [...new Set(collectionIds.filter(Boolean))];
+  try {
+    await db.batch([
+      db.prepare("DELETE FROM collection_products WHERE product_id = ?").bind(productId),
+      ...uniqueIds.map((collectionId, index) =>
+        db
+          .prepare(
+            "INSERT INTO collection_products (collection_id, product_id, display_order) VALUES (?, ?, ?)",
+          )
+          .bind(collectionId, productId, index),
+      ),
+    ]);
+  } catch (error) {
+    catalogueWriteError(error);
+  }
 }
