@@ -27,6 +27,9 @@ jobs:
       SECRET_KEY: local-ci-key-not-a-production-secret-0000
       PUBLIC_BASE_URL: http://testserver
       CATALOGUE_PREVIEW_ENABLED: "true"
+      ADMIN_SETUP_TOKEN: test-setup-token-with-at-least-32-characters
+      ADMIN_RECOVERY_TOKEN: test-recovery-token-with-at-least-32-characters
+      COOKIE_SIGNING_KEY: test-cookie-signing-key-with-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,3 +53,14 @@ jobs:
           docker run --rm --entrypoint python luit-and-loom:ci -c
           "from pathlib import Path; import app.seed;
           assert (Path(app.seed.__file__).parent / 'data' / 'river-reed-gold.json').is_file()"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Install Worker dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify Cloudflare Worker
+        run: pnpm run verify

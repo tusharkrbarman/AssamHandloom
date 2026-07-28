@@ -1,12 +1,72 @@
-# Luit & Loom — Phase 1 catalogue preview
+# Luit & Loom
 
-This project is a read-only preview of the Luit & Loom catalogue. It is built around a PostgreSQL database and a FastAPI storefront so the visual experience can be reviewed before commerce is enabled.
+An Assamese silk saree store with the Quiet Commerce storefront, a private
+single-owner dashboard, D1 catalogue and inventory data, and R2 product images.
+Checkout, payments, customer order links, and email are intentionally reserved
+for the next phase.
 
-The bundled twelve-product River, Reed & Gold catalogue is **sample content only**. Its people, pictures, prices, stock and provenance notes are placeholders, not verified live inventory. Records load only in preview mode, are not published, and no checkout or payment flow is available.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tusharkrbarman/AssamHandloom)
 
-## Run locally
+## Deploy to Cloudflare
 
-You need Python 3.12 and a local PostgreSQL 16 database. Copy `.env.example` to `.env`, choose a long local development `SECRET_KEY`, and set `DATABASE_URL` to your PostgreSQL database.
+1. Select the button above and sign in to Cloudflare.
+2. Choose the Worker name, D1 database name, and R2 bucket name.
+3. Provide three different random values of at least 32 characters for
+   `ADMIN_SETUP_TOKEN`, `ADMIN_RECOVERY_TOKEN`, and `COOKIE_SIGNING_KEY`.
+4. Keep the detected deploy command, `pnpm run deploy`. It applies every pending
+   D1 migration before publishing the Worker.
+5. After deployment, open `/admin/setup` once and create the store owner using
+   `ADMIN_SETUP_TOKEN`.
+6. Add products, variants, stock, collections, and images through `/admin`.
+7. Open `/health`; `{"status":"ok"}` confirms that the Worker can reach D1.
+
+Keep the recovery token separate from the setup and cookie-signing values. If
+owner access is lost, open `/admin/recover`; a successful recovery invalidates
+all older owner sessions.
+
+The production catalogue starts empty. The bundled River, Reed & Gold records
+belong only to the older preview and are not loaded into D1.
+
+## Run the Cloudflare store locally
+
+You need Node.js 24 and pnpm 11.
+
+```powershell
+pnpm install --frozen-lockfile
+Copy-Item .dev.vars.example .dev.vars
+pnpm run db:migrate:local
+pnpm run dev
+```
+
+Replace every value in `.dev.vars` with a different local secret of at least
+32 characters, then open the local URL shown by Wrangler. Create the owner at
+`/admin/setup`.
+
+Run all Worker checks with:
+
+```powershell
+pnpm run verify
+```
+
+## Current Phase 1 scope
+
+- Quiet Commerce catalogue, search, filters, collections, and product pages
+- Single-owner setup, login, recovery, signed sessions, CSRF protection, and
+  login lockout
+- Product, variant, collection, publication, and archive management
+- Atomic non-negative inventory adjustments with immutable history
+- JPEG, PNG, and WebP uploads to R2 with public/draft visibility controls
+
+Not included yet: cart, checkout, payments, customer accounts or passwordless
+order links, orders, email, refunds, tax automation, and shipping integrations.
+
+## Temporary FastAPI and Render fallback
+
+The existing FastAPI/PostgreSQL application remains available as a temporary
+read-only demo while the Cloudflare store is adopted. It contains sample
+content only and has no checkout or payment flow.
+
+To run it locally, use Python 3.12 and PostgreSQL 16:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -17,43 +77,6 @@ luit-loom-seed
 uvicorn app.main:create_app --factory --reload
 ```
 
-Open `http://localhost:8000`. Keep `CATALOGUE_PREVIEW_ENABLED=true` while reviewing the sample catalogue; turning it off hides every bundled record.
-
-## Check the project
-
-With PostgreSQL running, set `TEST_DATABASE_URL` to a disposable PostgreSQL database (for example `postgresql+psycopg://postgres@127.0.0.1:55432/luit_loom_test`) and run:
-
-```powershell
-alembic upgrade head
-python -m pytest -q
-python -m ruff check app tests
-python -m mypy app
-alembic current
-```
-
-Continuous integration runs those same checks against PostgreSQL 16.
-
-## Deploy the preview on Render
-
-The included `render.yaml` creates a free Docker web service and a free
-PostgreSQL database in Singapore:
-
-1. Push this branch to GitHub.
-2. In Render, choose **New > Blueprint** and connect this repository.
-3. Select `render.yaml` and apply the Blueprint.
-4. Wait for `/health/ready` to pass, then open the generated `onrender.com` URL.
-
-The container applies database migrations and idempotently loads the clearly
-labelled sample catalogue before starting the site. Render generates the
-application secret and supplies the database and public URLs; no credentials
-are committed.
-
-Render's free web service sleeps after 15 minutes without traffic and can take
-about a minute to wake. Its free PostgreSQL database expires 30 days after
-creation, so this setup is for a temporary demo rather than a production store.
-
-To check the image locally:
-
-```powershell
-docker build --tag luit-and-loom:render .
-```
+For Render, connect this repository as a Blueprint and apply `render.yaml`.
+The free web service can sleep after inactivity, and its free PostgreSQL
+database is temporary, so it is not the production path.
