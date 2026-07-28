@@ -1,4 +1,4 @@
-import { adminPage, audit } from "./admin";
+import { adminPage } from "./admin";
 import { AuthenticatedOwner, requireCsrf, requireOwner } from "./auth";
 import { escapeHtml, HttpError, readForm, redirect } from "./http";
 
@@ -7,7 +7,6 @@ export interface InventoryItem {
   sku: string;
   productTitle: string;
   quantity: number;
-  version: number;
 }
 
 export interface InventoryAdjustmentInput {
@@ -15,7 +14,6 @@ export interface InventoryAdjustmentInput {
   delta: number;
   reason: string;
   idempotencyKey: string;
-  actor: "owner";
 }
 
 interface InventoryRow {
@@ -23,7 +21,6 @@ interface InventoryRow {
   sku: string;
   product_title: string;
   quantity: number;
-  version: number;
 }
 
 interface AdjustmentRow {
@@ -32,7 +29,6 @@ interface AdjustmentRow {
   delta: number;
   reason: string;
   idempotency_key: string;
-  actor: "owner";
   created_at: string;
 }
 
@@ -41,7 +37,7 @@ export async function listInventory(db: D1Database): Promise<InventoryItem[]> {
     .prepare(
       `SELECT
         variant.id AS variant_id, variant.sku, product.title AS product_title,
-        stock.quantity, stock.version
+        stock.quantity
       FROM inventory_items stock
       JOIN variants variant ON variant.id = stock.variant_id
       JOIN products product ON product.id = variant.product_id
@@ -54,7 +50,6 @@ export async function listInventory(db: D1Database): Promise<InventoryItem[]> {
     sku: row.sku,
     productTitle: row.product_title,
     quantity: row.quantity,
-    version: row.version,
   }));
 }
 
@@ -99,7 +94,7 @@ export async function adjustInventory(
           `INSERT INTO inventory_adjustments (
             id, variant_id, delta, reason, idempotency_key, actor, created_at
           )
-          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+          SELECT ?1, ?2, ?3, ?4, ?5, 'owner', ?6
           WHERE EXISTS (
             SELECT 1 FROM inventory_items
             WHERE variant_id = ?2 AND quantity + ?3 >= 0
@@ -111,13 +106,12 @@ export async function adjustInventory(
           input.delta,
           reason,
           input.idempotencyKey,
-          input.actor,
           createdAt,
         ),
       db
         .prepare(
           `UPDATE inventory_items
-          SET quantity = quantity + ?2, version = version + 1, updated_at = ?3
+          SET quantity = quantity + ?2, updated_at = ?3
           WHERE variant_id = ?1
             AND EXISTS (
               SELECT 1 FROM inventory_adjustments
@@ -167,7 +161,7 @@ async function inventoryPage(
     .map(
       (item) => `<tr>
         <td>${escapeHtml(item.sku)}</td><td>${escapeHtml(item.productTitle)}</td>
-        <td>${item.quantity}</td><td>${item.version}</td>
+        <td>${item.quantity}</td>
         <td><form method="post" action="/admin/inventory/${item.variantId}/adjust">
           <input type="hidden" name="csrf" value="${escapeHtml(owner.session.csrf)}">
           <input type="hidden" name="idempotency_key" value="${crypto.randomUUID()}">
@@ -186,8 +180,8 @@ async function inventoryPage(
     .join("");
   return adminPage(
     "Inventory",
-    `<table><thead><tr><th>SKU</th><th>Product</th><th>Quantity</th><th>Version</th><th>Adjust</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5">No variants yet.</td></tr>'}</tbody></table>
+    `<table><thead><tr><th>SKU</th><th>Product</th><th>Quantity</th><th>Adjust</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4">No variants yet.</td></tr>'}</tbody></table>
     <h2>Adjustment history</h2>
     <table><thead><tr><th>SKU</th><th>Change</th><th>Reason</th><th>Time</th></tr></thead>
     <tbody>${historyRows || '<tr><td colspan="4">No adjustments yet.</td></tr>'}</tbody></table>`,
@@ -218,22 +212,14 @@ export async function routeInventory(
     if (request.method === "POST" && match?.[1]) {
       const form = await readForm(request);
       await requireCsrf(request, owner.session, form);
-      const adjustment = await adjustInventory(env.DB, {
+      await adjustInventory(env.DB, {
         variantId: match[1],
         delta: /^-?\d+$/.test(field(form, "delta"))
           ? Number.parseInt(field(form, "delta"), 10)
           : Number.NaN,
         reason: field(form, "reason"),
         idempotencyKey: field(form, "idempotency_key"),
-        actor: "owner",
       });
-      await audit(
-        env.DB,
-        "inventory.adjust",
-        "variant",
-        adjustment.variant_id,
-        "Inventory adjusted",
-      );
       return redirect("/admin/inventory");
     }
     return adminPage("Not found", "<p>The inventory page was not found.</p>", owner, 404);

@@ -1,4 +1,4 @@
-import { adminPage, audit } from "./admin";
+import { adminPage } from "./admin";
 import { AuthenticatedOwner, requireCsrf, requireOwner } from "./auth";
 import { escapeHtml, HttpError, readForm, redirect } from "./http";
 
@@ -214,14 +214,13 @@ export async function routeMedia(request: Request, env: Env): Promise<Response |
       if (!(file instanceof File)) {
         throw new HttpError(415, "invalid_image", "Choose a supported image.");
       }
-      const media = await uploadProductMedia(
+      await uploadProductMedia(
         env.DB,
         env.MEDIA,
         uploadMatch[1],
         file,
         field(form, "alt_text"),
       );
-      await audit(env.DB, "media.create", "media", media.id, "Product image added");
       return redirect(`/admin/products/${uploadMatch[1]}`);
     }
 
@@ -235,7 +234,6 @@ export async function routeMedia(request: Request, env: Env): Promise<Response |
         deleteMatch[1],
         request.headers.get("x-request-id") ?? crypto.randomUUID(),
       );
-      await audit(env.DB, "media.delete", "media", media.id, "Product image removed");
       return redirect(`/admin/products/${media.productId}`);
     }
     return adminPage("Not found", "<p>The media page was not found.</p>", owner, 404);

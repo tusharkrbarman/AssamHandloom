@@ -70,19 +70,14 @@ function header(): string {
         <input id="site-search" name="search" type="search" placeholder="Find your weave" autocomplete="off">
         <button class="visually-hidden" type="submit">Search</button>
       </form>
-      <div class="header-status">
-        <span class="utility-placeholder" aria-label="Wishlist. Coming in a later phase"><svg class="utility-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"></path></svg><span>Wishlist</span></span>
-        <span class="utility-placeholder" aria-label="Bag, zero items. Coming in a later phase"><svg class="utility-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6 8h12l1 13H5L6 8Z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg><span>Bag (0)</span></span>
-      </div>
-      <button class="disclosure-button" type="button" data-disclosure-button aria-controls="mobile-navigation" aria-expanded="false">Browse</button>
+      <details class="mobile-disclosure">
+        <summary class="disclosure-button">Browse</summary>
+        <nav class="mobile-navigation" aria-label="Mobile navigation">
+          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/search">Search</a>
+        </nav>
+      </details>
     </div>
   </div>
-  <div id="mobile-navigation" class="mobile-navigation" hidden>
-    <nav class="container" aria-label="Mobile navigation">
-      <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/search">Search</a>
-    </nav>
-  </div>
-  <button class="disclosure-backdrop" type="button" data-disclosure-backdrop aria-label="Close navigation" hidden></button>
 </header>`;
 }
 
@@ -117,8 +112,6 @@ function shell(
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="/css/site.css">
-  <script src="/vendor/htmx-2.0.4.min.js" defer></script>
-  <script src="/js/site.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -187,7 +180,7 @@ function selected(value: string | null, expected: string): string {
 }
 
 function filters(url: URL, query: ProductListQuery): string {
-  return `<form class="catalogue-filters" method="get" action="${escapeHtml(url.pathname)}" aria-label="Filter the catalogue" hx-get="${escapeHtml(url.pathname)}" hx-target="#catalogue-results" hx-swap="outerHTML" hx-push-url="true" hx-select="#catalogue-results" hx-trigger="change from:select, change from:input[type=checkbox], submit">
+  return `<form class="catalogue-filters" method="get" action="${escapeHtml(url.pathname)}" aria-label="Filter the catalogue">
   <div><label for="catalogue-search">Search</label><input id="catalogue-search" name="search" value="${escapeHtml(query.search)}"></div>
   <div><label for="silk-type">Weave (silk type)</label><select id="silk-type" name="silk_type"><option value="">All silks</option><option value="Muga"${selected(query.silkType, "Muga")}>Muga</option><option value="Pat"${selected(query.silkType, "Pat")}>Pat</option><option value="Eri"${selected(query.silkType, "Eri")}>Eri</option></select></div>
   <div><label for="catalogue-colour">Colour</label><select id="catalogue-colour" name="colour"><option value="">All colours</option><option value="Red"${selected(query.colour, "Red")}>Red</option><option value="Ivory"${selected(query.colour, "Ivory")}>Ivory</option><option value="Green"${selected(query.colour, "Green")}>Green</option></select></div>
@@ -233,7 +226,7 @@ function homeContent(page: Page<ProductCard>, url: URL): string {
   <div><p class="eyebrow">Featured artisan</p><h2>Maker stories are introduced with care.</h2><p>Artisan names and production notes expand only after verification and consent.</p><a href="/artisans">Meet the artisans <span aria-hidden="true">→</span></a></div>
   <div class="artisan-feature__study" aria-hidden="true"><div><span>Luit &amp; Loom</span></div></div>
 </section>
-<section class="newsletter-invitation"><div class="newsletter-invitation__inner"><p class="eyebrow">From the riverbank</p><h2>Notes on silk, makers, and keeping cloth.</h2><p>Email sign-up opens in a later phase.</p><div class="newsletter-form" aria-label="Newsletter preview"><label class="visually-hidden" for="newsletter-email">Email address</label><input id="newsletter-email" type="email" placeholder="Your email address" disabled><button type="button" disabled>Notify me</button></div></div></section>`;
+`;
 }
 
 function listingContent(
@@ -270,8 +263,6 @@ function productContent(product: ProductDetail, related: ProductCard[]): string 
     <p>${escapeHtml(product.description || "A considered handloom catalogue entry, shared with material and maker context.")}</p>
     <p class="price">${firstVariant ? escapeHtml(formatMoney(firstVariant.priceMinor, firstVariant.currency)) : "Price on request"}</p>
     <p>${product.available ? "Available" : "Currently unavailable"}</p>
-    <button type="button" disabled aria-describedby="checkout-note">Add to bag</button>
-    <p id="checkout-note">Checkout opens in a later phase.</p>
   </div>
   <section class="specifications" aria-labelledby="specifications-title"><h2 id="specifications-title">Specifications</h2><dl><div><dt>Silk</dt><dd>${escapeHtml(product.silkType)}</dd></div><div><dt>Dimensions</dt><dd>Verification pending</dd></div><div><dt>Care</dt><dd>Request product-specific care guidance before purchase.</dd></div><div><dt>Occasion</dt><dd>${escapeHtml(product.occasion || "Verification pending")}</dd></div></dl></section>
   <section class="provenance" aria-labelledby="provenance-title"><p class="eyebrow">Provenance</p><h2 id="provenance-title">Catalogue record</h2><dl><div><dt>Artisan</dt><dd>Verification pending</dd></div><div><dt>Region</dt><dd>Verification pending</dd></div><div><dt>Motif</dt><dd>Verification pending</dd></div><div><dt>Production details</dt><dd>Verification pending</dd></div></dl><p>Provenance details are added only after verification.</p></section>
@@ -312,10 +303,6 @@ export async function routeStorefront(
   if (url.pathname === "/shop" || url.pathname === "/search") {
     const query = parseProductListQuery(url);
     const page = await listProducts(env.DB, query);
-    const content = productGrid(page, url);
-    if (request.headers.get("HX-Request")?.toLowerCase() === "true") {
-      return html(content);
-    }
     return shell(
       request,
       `${url.pathname === "/search" ? "Search" : "Shop"} · Luit & Loom`,
@@ -343,10 +330,6 @@ export async function routeStorefront(
     }
     const query = parseProductListQuery(url, false, slug);
     const page = await listProducts(env.DB, query);
-    const content = productGrid(page, url);
-    if (request.headers.get("HX-Request")?.toLowerCase() === "true") {
-      return html(content);
-    }
     return shell(
       request,
       `${collection.title} · Luit & Loom`,

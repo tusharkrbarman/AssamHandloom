@@ -99,15 +99,6 @@ CREATE TABLE login_lockouts (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE admin_audit_events (
-  id TEXT PRIMARY KEY,
-  action TEXT NOT NULL,
-  target_type TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  summary TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
 CREATE INDEX products_public_idx
   ON products(publication_state, archived_at, featured_rank);
 CREATE INDEX variants_product_public_idx

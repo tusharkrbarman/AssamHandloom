@@ -259,17 +259,5 @@ describe("owner catalogue management", () => {
         .first("count"),
     ).toBe(1);
 
-    const audits = await env.DB.prepare(
-      "SELECT action, summary FROM admin_audit_events ORDER BY created_at",
-    ).all<{ action: string; summary: string }>();
-    expect(audits.results.map((row) => row.action)).toEqual([
-      "owner.setup",
-      "product.create",
-      "collection.create",
-      "collection.create",
-      "product.collections",
-      "product.collections",
-    ]);
-    expect(audits.results.map((row) => row.summary).join(" ")).not.toContain("Muga Dawn");
   });
 });

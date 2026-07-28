@@ -421,23 +421,15 @@ async function setup(request: Request, env: Env): Promise<Response> {
   const password = validPassword(formText(form, "password"));
   const record = await passwordRecord(password);
   const now = new Date().toISOString();
-  await env.DB.batch([
-    env.DB
-      .prepare(
-        `INSERT INTO owner (
-          id, email, password_hash, password_salt, password_iterations,
-          session_version, created_at, updated_at
-        ) VALUES ('owner', ?, ?, ?, ?, 1, ?, ?)`,
-      )
-      .bind(email, record.hash, record.salt, record.iterations, now, now),
-    env.DB
-      .prepare(
-        `INSERT INTO admin_audit_events (
-          id, action, target_type, target_id, summary, created_at
-        ) VALUES (?, 'owner.setup', 'owner', 'owner', 'Owner account created', ?)`,
-      )
-      .bind(crypto.randomUUID(), now),
-  ]);
+  await env.DB
+    .prepare(
+      `INSERT INTO owner (
+        id, email, password_hash, password_salt, password_iterations,
+        session_version, created_at, updated_at
+      ) VALUES ('owner', ?, ?, ?, ?, 1, ?, ?)`,
+    )
+    .bind(email, record.hash, record.salt, record.iterations, now, now)
+    .run();
   return redirect("/admin/login?setup=complete");
 }
 
@@ -487,23 +479,15 @@ async function recover(request: Request, env: Env): Promise<Response> {
   }
   const record = await passwordRecord(password);
   const now = new Date().toISOString();
-  await env.DB.batch([
-    env.DB
-      .prepare(
-        `UPDATE owner
-        SET password_hash = ?, password_salt = ?, password_iterations = ?,
-            session_version = session_version + 1, updated_at = ?
-        WHERE id = 'owner'`,
-      )
-      .bind(record.hash, record.salt, record.iterations, now),
-    env.DB
-      .prepare(
-        `INSERT INTO admin_audit_events (
-          id, action, target_type, target_id, summary, created_at
-        ) VALUES (?, 'owner.recover', 'owner', 'owner', 'Owner credentials recovered', ?)`,
-      )
-      .bind(crypto.randomUUID(), now),
-  ]);
+  await env.DB
+    .prepare(
+      `UPDATE owner
+      SET password_hash = ?, password_salt = ?, password_iterations = ?,
+          session_version = session_version + 1, updated_at = ?
+      WHERE id = 'owner'`,
+    )
+    .bind(record.hash, record.salt, record.iterations, now)
+    .run();
   return redirect("/admin/login?recovered=complete");
 }
 

@@ -116,23 +116,6 @@ export function adminPage(
   );
 }
 
-export async function audit(
-  db: D1Database,
-  action: string,
-  targetType: string,
-  targetId: string,
-  summary: string,
-): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO admin_audit_events (
-        id, action, target_type, target_id, summary, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(crypto.randomUUID(), action, targetType, targetId, summary, new Date().toISOString())
-    .run();
-}
-
 function productInput(form: FormData, id: string | null): ProductInput {
   return {
     id,
@@ -337,27 +320,24 @@ async function mutate(
 
   if (path === "/admin/products/new") {
     const id = await saveProduct(env.DB, productInput(form, null));
-    await audit(env.DB, "product.create", "product", id, "Product created");
     return redirect(`/admin/products/${id}`);
   }
 
   const productMatch = path.match(/^\/admin\/products\/([^/]+)$/);
   if (productMatch?.[1]) {
     const id = await saveProduct(env.DB, productInput(form, productMatch[1]));
-    await audit(env.DB, "product.update", "product", id, "Product updated");
     return redirect(`/admin/products/${id}`);
   }
 
   const archiveMatch = path.match(/^\/admin\/products\/([^/]+)\/archive$/);
   if (archiveMatch?.[1]) {
     await archiveProduct(env.DB, archiveMatch[1]);
-    await audit(env.DB, "product.archive", "product", archiveMatch[1], "Product archived");
     return redirect("/admin");
   }
 
   const createVariantMatch = path.match(/^\/admin\/products\/([^/]+)\/variants$/);
   if (createVariantMatch?.[1]) {
-    const id = await saveVariant(env.DB, {
+    await saveVariant(env.DB, {
       id: null,
       productId: createVariantMatch[1],
       sku: text(form, "sku"),
@@ -367,7 +347,6 @@ async function mutate(
       weightGrams: optionalInteger(form, "weight_grams"),
       publicationState: state(form),
     });
-    await audit(env.DB, "variant.create", "variant", id, "Variant created");
     return redirect(`/admin/products/${createVariantMatch[1]}`);
   }
 
@@ -388,7 +367,6 @@ async function mutate(
       weightGrams: optionalInteger(form, "weight_grams"),
       publicationState: state(form),
     });
-    await audit(env.DB, "variant.update", "variant", variantMatch[1], "Variant updated");
     return redirect(`/admin/products/${variant.product_id}`);
   }
 
@@ -398,13 +376,6 @@ async function mutate(
       .getAll("product_id")
       .filter((value): value is string => typeof value === "string");
     await setCollectionProducts(env.DB, membershipMatch[1], ids);
-    await audit(
-      env.DB,
-      "product.collections",
-      "product",
-      membershipMatch[1],
-      "Product collections updated",
-    );
     return redirect(`/admin/products/${membershipMatch[1]}`);
   }
 
@@ -417,7 +388,6 @@ async function mutate(
       publicationState: state(form),
       displayOrder: integer(form, "display_order"),
     });
-    await audit(env.DB, "collection.create", "collection", id, "Collection created");
     return redirect(`/admin/collections/${id}`);
   }
 
@@ -431,7 +401,6 @@ async function mutate(
       publicationState: state(form),
       displayOrder: integer(form, "display_order"),
     });
-    await audit(env.DB, "collection.update", "collection", id, "Collection updated");
     return redirect(`/admin/collections/${id}`);
   }
   return null;

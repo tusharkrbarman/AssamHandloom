@@ -3,7 +3,6 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 const REQUIRED_TABLES = [
-  "admin_audit_events",
   "collection_products",
   "collections",
   "inventory_adjustments",

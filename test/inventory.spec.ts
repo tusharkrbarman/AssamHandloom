@@ -32,7 +32,7 @@ beforeEach(async () => {
       .bind(VARIANT_ID, now, now),
     env.DB
       .prepare(
-        "INSERT INTO inventory_items (variant_id, quantity, version, updated_at) VALUES (?, 0, 0, ?)",
+        "INSERT INTO inventory_items (variant_id, quantity, updated_at) VALUES (?, 0, ?)",
       )
       .bind(VARIANT_ID, now),
   ]);
@@ -54,7 +54,6 @@ describe("inventory adjustments", () => {
       delta: 3,
       reason: "Initial stock",
       idempotencyKey: firstKey,
-      actor: "owner",
     });
     expect(await quantity()).toBe(3);
     expect(
@@ -64,7 +63,6 @@ describe("inventory adjustments", () => {
           delta: 3,
           reason: "Retry",
           idempotencyKey: firstKey,
-          actor: "owner",
         })
       ).id,
     ).toBe(first.id);
@@ -81,7 +79,6 @@ describe("inventory adjustments", () => {
         delta: -4,
         reason: "Impossible sale",
         idempotencyKey: crypto.randomUUID(),
-        actor: "owner",
       }),
     ).rejects.toMatchObject({ status: 409, code: "insufficient_stock" });
     expect(await quantity()).toBe(3);
@@ -91,7 +88,6 @@ describe("inventory adjustments", () => {
       delta: -3,
       reason: "Stock correction",
       idempotencyKey: crypto.randomUUID(),
-      actor: "owner",
     });
     expect(await quantity()).toBe(0);
 
@@ -112,7 +108,6 @@ describe("inventory adjustments", () => {
       delta: 2,
       reason: "Received stock",
       idempotencyKey,
-      actor: "owner" as const,
     };
     const [left, right] = await Promise.all([
       adjustInventory(env.DB, input),
