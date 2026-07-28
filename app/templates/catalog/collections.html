@@ -1,1 +1,0 @@
-{% extends "base.html" %}{% block content %}<h1>Collections</h1><ul>{% for collection in collections %}<li><a href="/collections/{{ collection.slug }}">{{ collection.title }}</a></li>{% else %}<li>No collections are available.</li>{% endfor %}</ul>{% endblock %}

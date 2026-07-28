@@ -46,9 +46,9 @@ async function seedCatalogue(): Promise<void> {
       ),
     env.DB
       .prepare(
-        "INSERT INTO inventory_items (variant_id, quantity, version, updated_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO inventory_items (variant_id, quantity, updated_at) VALUES (?, ?, ?)",
       )
-      .bind("variant-published", 1, 0, created),
+      .bind("variant-published", 1, created),
     env.DB
       .prepare(
         `INSERT INTO products (
@@ -90,9 +90,9 @@ async function seedCatalogue(): Promise<void> {
       ),
     env.DB
       .prepare(
-        "INSERT INTO inventory_items (variant_id, quantity, version, updated_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO inventory_items (variant_id, quantity, updated_at) VALUES (?, ?, ?)",
       )
-      .bind("variant-draft", 1, 0, created),
+      .bind("variant-draft", 1, created),
     env.DB
       .prepare(
         `INSERT INTO collections (
@@ -112,9 +112,9 @@ async function seedCatalogue(): Promise<void> {
       ),
     env.DB
       .prepare(
-        "INSERT INTO collection_products (collection_id, product_id, display_order) VALUES (?, ?, ?)",
+        "INSERT INTO collection_products (collection_id, product_id) VALUES (?, ?)",
       )
-      .bind("collection-river", "product-published", 1),
+      .bind("collection-river", "product-published"),
   ]);
 }
 
@@ -163,16 +163,6 @@ describe("Quiet Commerce storefront", () => {
     expect(await page.text()).toContain("Luit Dawn");
   });
 
-  it("returns only the live results region for HTMX", async () => {
-    const response = await SELF.fetch("https://example.com/shop", {
-      headers: { "HX-Request": "true" },
-    });
-    const body = await response.text();
-    expect(response.status).toBe(200);
-    expect(body).toContain('id="catalogue-results"');
-    expect(body).not.toContain("<!doctype html>");
-  });
-
   it("supports published collections and branded not-found recovery", async () => {
     const collection = await SELF.fetch(
       "https://example.com/collections/river-edit",
@@ -189,15 +179,15 @@ describe("Quiet Commerce storefront", () => {
     expect(await missing.text()).toContain("We couldn’t find that weave");
   });
 
-  it("preserves the accessible shell and local behavioral assets", async () => {
+  it("preserves the accessible shell and local stylesheet", async () => {
     const response = await SELF.fetch("https://example.com/");
     const body = await response.text();
     expect((body.match(/<main\b/g) ?? []).length).toBe(1);
     expect(body).toContain('href="#main-content"');
     expect(body).toContain('aria-label="Primary navigation"');
+    expect(body).toContain('<details class="mobile-disclosure">');
     expect(body).toContain('role="search"');
     expect(body).toContain('href="/css/site.css"');
-    expect(body).toContain('src="/js/site.js"');
-    expect(body).toContain('src="/vendor/htmx-2.0.4.min.js"');
+    expect(body).not.toContain("<script");
   });
 });

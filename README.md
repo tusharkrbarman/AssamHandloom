@@ -59,24 +59,3 @@ pnpm run verify
 
 Not included yet: cart, checkout, payments, customer accounts or passwordless
 order links, orders, email, refunds, tax automation, and shipping integrations.
-
-## Temporary FastAPI and Render fallback
-
-The existing FastAPI/PostgreSQL application remains available as a temporary
-read-only demo while the Cloudflare store is adopted. It contains sample
-content only and has no checkout or payment flow.
-
-To run it locally, use Python 3.12 and PostgreSQL 16:
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-alembic upgrade head
-luit-loom-seed
-uvicorn app.main:create_app --factory --reload
-```
-
-For Render, connect this repository as a Blueprint and apply `render.yaml`.
-The free web service can sleep after inactivity, and its free PostgreSQL
-database is temporary, so it is not the production path.

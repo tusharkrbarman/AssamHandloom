@@ -600,7 +600,7 @@ export async function saveVariant(db: D1Database, input: VariantInput): Promise<
           .bind(id, input.productId, sku, title, price, currency, weight, state, now, now),
         db
           .prepare(
-            "INSERT INTO inventory_items (variant_id, quantity, version, updated_at) VALUES (?, 0, 0, ?)",
+            "INSERT INTO inventory_items (variant_id, quantity, updated_at) VALUES (?, 0, ?)",
           )
           .bind(id, now),
       ]);
@@ -664,12 +664,12 @@ export async function setCollectionProducts(
   try {
     await db.batch([
       db.prepare("DELETE FROM collection_products WHERE product_id = ?").bind(productId),
-      ...uniqueIds.map((collectionId, index) =>
+      ...uniqueIds.map((collectionId) =>
         db
           .prepare(
-            "INSERT INTO collection_products (collection_id, product_id, display_order) VALUES (?, ?, ?)",
+            "INSERT INTO collection_products (collection_id, product_id) VALUES (?, ?)",
           )
-          .bind(collectionId, productId, index),
+          .bind(collectionId, productId),
       ),
     ]);
   } catch (error) {
