@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "luit-and-loom",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "8d0d6fce-ad39-4e2d-83e8-710b00a9146d",
       "migrations_dir": "d1-migrations"
     }
   ],
