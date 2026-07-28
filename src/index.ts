@@ -1,4 +1,5 @@
-import { escapeHtml, html, HttpError, json } from "./http";
+import { HttpError, json } from "./http";
+import { renderStorefrontError, routeStorefront } from "./storefront";
 
 interface RequestLog {
   requestId: string;
@@ -7,18 +8,6 @@ interface RequestLog {
   status: number;
   durationMs: number;
   errorCode?: string;
-}
-
-function errorPage(status: number, message: string, requestId: string): Response {
-  return html(
-    `<!doctype html>
-<html lang="en-IN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${status} · Luit &amp; Loom</title></head>
-<body><main><h1>${status}</h1><p>${escapeHtml(message)}</p><p>Reference: ${escapeHtml(requestId)}</p></main></body>
-</html>`,
-    status,
-    { "cache-control": "no-store" },
-  );
 }
 
 async function health(env: Env): Promise<Response> {
@@ -38,7 +27,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/health") {
     return health(env);
   }
-  return env.ASSETS.fetch(request);
+  const storefront = await routeStorefront(request, env);
+  if (storefront) {
+    return storefront;
+  }
+  const asset = await env.ASSETS.fetch(request);
+  return asset.status === 404 && request.method === "GET"
+    ? renderStorefrontError(request, 404, crypto.randomUUID())
+    : asset;
 }
 
 export default {
@@ -56,7 +52,7 @@ export default {
         errorCode = error.code;
         response = pathname.startsWith("/api/")
           ? json({ error: { code: error.code, message: error.message } }, error.status)
-          : errorPage(error.status, error.message, requestId);
+          : renderStorefrontError(request, error.status, requestId);
       } else {
         errorCode = "internal_error";
         response = pathname.startsWith("/api/")
@@ -64,7 +60,7 @@ export default {
               { error: { code: "internal_error", message: "The request could not be completed." } },
               500,
             )
-          : errorPage(500, "The request could not be completed.", requestId);
+          : renderStorefrontError(request, 500, requestId);
       }
     }
 
