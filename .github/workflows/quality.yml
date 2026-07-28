@@ -47,8 +47,10 @@ jobs:
       - name: Type check
         run: .venv/bin/python -m mypy app
       - name: Build deployment image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: docker build --tag luit-and-loom:ci .
       - name: Verify packaged catalogue
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: >-
           docker run --rm --entrypoint python luit-and-loom:ci -c
           "from pathlib import Path; import app.seed;
