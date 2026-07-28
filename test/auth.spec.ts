@@ -88,7 +88,10 @@ describe("owner authentication", () => {
     );
     expect(authenticated.owner.email).toBe(EMAIL);
 
-    const tampered = `${cookie.slice(0, -1)}${cookie.endsWith("A") ? "B" : "A"}`;
+    const signatureStart = cookie.lastIndexOf(".") + 1;
+    const replacement = cookie[signatureStart] === "A" ? "B" : "A";
+    const tampered =
+      cookie.slice(0, signatureStart) + replacement + cookie.slice(signatureStart + 1);
     await expect(
       requireOwner(new Request(`${ORIGIN}/admin`, { headers: { cookie: tampered } }), env),
     ).rejects.toMatchObject({ status: 401 });
