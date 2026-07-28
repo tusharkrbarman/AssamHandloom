@@ -1,6 +1,11 @@
 .worktrees/
 .superpowers/
 .superdesign/tmp/
+.dev.vars
+.pnpm-store/
+.wrangler/
+dist/
+worker-configuration.d.ts
 .env
 .env.*
 !.env.example
