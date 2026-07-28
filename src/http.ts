@@ -33,8 +33,14 @@ export function json(value: unknown, status = 200): Response {
   });
 }
 
-export function redirect(location: string, status: 303 | 307 = 303): Response {
-  return new Response(null, { status, headers: { location } });
+export function redirect(
+  location: string,
+  status: 303 | 307 = 303,
+  initialHeaders?: HeadersInit,
+): Response {
+  const headers = new Headers(initialHeaders);
+  headers.set("location", location);
+  return new Response(null, { status, headers });
 }
 
 export function escapeHtml(value: unknown): string {

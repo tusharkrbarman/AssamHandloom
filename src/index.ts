@@ -1,3 +1,4 @@
+import { routeAuth } from "./auth";
 import { HttpError, json } from "./http";
 import { renderStorefrontError, routeStorefront } from "./storefront";
 
@@ -26,6 +27,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/health") {
     return health(env);
+  }
+  const auth = await routeAuth(request, env);
+  if (auth) {
+    return auth;
   }
   const storefront = await routeStorefront(request, env);
   if (storefront) {
