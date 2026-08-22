@@ -1,3 +1,9 @@
 ADMIN_SETUP_TOKEN=replace-with-a-random-value-at-least-32-characters-long
 ADMIN_RECOVERY_TOKEN=replace-with-a-different-random-value-at-least-32-characters-long
 COOKIE_SIGNING_KEY=replace-with-an-independent-random-value-at-least-32-characters-long
+
+# Optional — set all three to enable Razorpay checkout and webhooks.
+# Leave them out entirely to keep online payments disabled.
+# RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxxxxxx
+# RAZORPAY_KEY_SECRET=replace-with-your-razorpay-key-secret
+# RAZORPAY_WEBHOOK_SECRET=replace-with-your-razorpay-webhook-secret
