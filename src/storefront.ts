@@ -18,7 +18,7 @@ const EDITORIAL_PAGES: Record<string, { title: string; body: string }> = {
   },
   "/our-story": {
     title: "Our story",
-    body: "Luit & Loom presents Assamese handloom with care. Orders and live checkout are not available in Phase 1.",
+    body: "Luit & Loom presents Assamese handloom with care. Browse the catalogue, reserve weaves through checkout preview, and complete payment once online payments open.",
   },
   "/journal": {
     title: "Journal",
@@ -34,19 +34,19 @@ const EDITORIAL_PAGES: Record<string, { title: string; body: string }> = {
   },
   "/pages/shipping": {
     title: "Shipping",
-    body: "Shipping terms will be published before checkout opens. Phase 1 does not accept orders.",
+    body: "We ship across India first. Exact rates and timelines are published with the payments release; placing a preview order reserves stock at no cost.",
   },
   "/pages/returns": {
     title: "Returns",
-    body: "Returns information will be confirmed before checkout opens.",
+    body: "Returns terms are being finalised for the commerce launch and will be confirmed before any payment is taken.",
   },
   "/pages/contact": {
     title: "Contact",
-    body: "Contact channels will be announced with the live commerce release.",
+    body: "Contact channels are announced with the live commerce release. Preview orders are held safely in the meantime.",
   },
   "/pages/faq": {
     title: "Frequently asked questions",
-    body: "Phase 1 manages the catalogue and inventory. Checkout and customer orders are not available yet.",
+    body: "You can browse, bag, and place a reservation order today. Online payments activate with our next release; reserved weaves cost nothing until then.",
   },
 };
 
@@ -70,10 +70,11 @@ function header(): string {
         <input id="site-search" name="search" type="search" placeholder="Find your weave" autocomplete="off">
         <button class="visually-hidden" type="submit">Search</button>
       </form>
+      <a class="bag-link" href="/cart">Bag (<span data-bag-count>0</span>)</a>
       <details class="mobile-disclosure">
         <summary class="disclosure-button">Browse</summary>
         <nav class="mobile-navigation" aria-label="Mobile navigation">
-          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/search">Search</a>
+          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/cart">Your bag</a><a href="/search">Search</a>
         </nav>
       </details>
     </div>
@@ -87,12 +88,12 @@ function footer(): string {
     <div class="footer-brand"><a class="wordmark" href="/">Luit <span>&amp;</span> Loom</a><p>Contemporary Assamese handloom, considered with care.</p></div>
     <nav aria-label="Discover"><h2>Discover</h2><ul><li><a href="/shop">Shop all</a></li><li><a href="/artisans">The artisans</a></li><li><a href="/our-story">Our story</a></li><li><a href="/journal">Journal</a></li></ul></nav>
     <nav aria-label="Footer navigation"><h2>Guidance</h2><ul><li><a href="/pages/silk-guide">Silk Guide</a></li><li><a href="/pages/care">Care Guide</a></li><li><a href="/pages/shipping">Shipping</a></li><li><a href="/pages/returns">Returns</a></li><li><a href="/pages/contact">Contact</a></li><li><a href="/pages/faq">FAQ</a></li></ul></nav>
-    <div class="footer-status"><h2>Store status</h2><p class="footer-note">Phase 1 catalogue management. Checkout is not yet available.</p></div>
+    <div class="footer-status"><h2>Store status</h2><p class="footer-note">Catalogue, bag, and checkout are in live preview. Online payments arrive with our next release.</p></div>
   </div>
 </footer>`;
 }
 
-function shell(
+export function shell(
   request: Request,
   title: string,
   content: string,
@@ -118,6 +119,7 @@ function shell(
   ${header()}
   <main id="main-content" tabindex="-1">${content}</main>
   ${footer()}
+  <script src="/js/bag.js" defer></script>
 </body>
 </html>`, status, status >= 400 ? { "cache-control": "no-store" } : undefined);
 }
@@ -255,6 +257,28 @@ function productContent(product: ProductDetail, related: ProductCard[]): string 
         .join("")
     : `<div class="textile-placeholder product-detail__placeholder" role="img" aria-label="Textile-colour study for ${escapeHtml(product.title)}">Textile-colour study</div>`;
   const firstVariant = product.variants[0];
+  const variantChoices = product.variants.length
+    ? `<label class="visually-hidden" for="bag-variant">Choose an option</label>
+    <select id="bag-variant" name="variant">
+      ${product.variants
+        .map(
+          (variant) =>
+            `<option value="${escapeHtml(variant.id)}"${variant === firstVariant ? " selected" : ""}${
+              variant.available ? "" : " disabled"
+            }>${escapeHtml(variant.title)} — ${escapeHtml(formatMoney(variant.priceMinor, variant.currency))}${variant.available ? "" : " (sold out)"}</option>`,
+        )
+        .join("")}
+    </select>`
+    : "";
+  const bagForm = firstVariant
+    ? `<form class="add-to-bag" data-add-to-bag>
+      ${variantChoices}
+      <label class="visually-hidden" for="bag-quantity">Quantity</label>
+      <input id="bag-quantity" name="quantity" type="number" min="1" max="10" value="1">
+      <button class="button" type="submit">Add to bag</button>
+      <p class="add-to-bag__note" aria-live="polite" hidden></p>
+    </form>`
+    : `<p class="empty-state">Options for this weave are being prepared.</p>`;
   return `<article class="product-detail">
   <div class="product-detail__gallery" aria-label="${escapeHtml(product.title)} gallery">${gallery}</div>
   <div class="product-detail__summary">
@@ -263,6 +287,7 @@ function productContent(product: ProductDetail, related: ProductCard[]): string 
     <p>${escapeHtml(product.description || "A considered handloom catalogue entry, shared with material and maker context.")}</p>
     <p class="price">${firstVariant ? escapeHtml(formatMoney(firstVariant.priceMinor, firstVariant.currency)) : "Price on request"}</p>
     <p>${product.available ? "Available" : "Currently unavailable"}</p>
+    ${bagForm}
   </div>
   <section class="specifications" aria-labelledby="specifications-title"><h2 id="specifications-title">Specifications</h2><dl><div><dt>Silk</dt><dd>${escapeHtml(product.silkType)}</dd></div><div><dt>Dimensions</dt><dd>Verification pending</dd></div><div><dt>Care</dt><dd>Request product-specific care guidance before purchase.</dd></div><div><dt>Occasion</dt><dd>${escapeHtml(product.occasion || "Verification pending")}</dd></div></dl></section>
   <section class="provenance" aria-labelledby="provenance-title"><p class="eyebrow">Provenance</p><h2 id="provenance-title">Catalogue record</h2><dl><div><dt>Artisan</dt><dd>Verification pending</dd></div><div><dt>Region</dt><dd>Verification pending</dd></div><div><dt>Motif</dt><dd>Verification pending</dd></div><div><dt>Production details</dt><dd>Verification pending</dd></div></dl><p>Provenance details are added only after verification.</p></section>
