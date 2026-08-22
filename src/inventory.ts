@@ -2,14 +2,14 @@ import { adminPage } from "./admin";
 import { AuthenticatedOwner, requireCsrf, requireOwner } from "./auth";
 import { escapeHtml, HttpError, readForm, redirect } from "./http";
 
-export interface InventoryItem {
+interface InventoryItem {
   variantId: string;
   sku: string;
   productTitle: string;
   quantity: number;
 }
 
-export interface InventoryAdjustmentInput {
+interface InventoryAdjustmentInput {
   variantId: string;
   delta: number;
   reason: string;

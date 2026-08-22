@@ -27,7 +27,7 @@ interface LockoutRecord {
   locked_until: string | null;
 }
 
-export interface AdminSession {
+interface AdminSession {
   ownerId: "owner";
   sessionVersion: number;
   expiresAt: number;
