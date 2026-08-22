@@ -21,12 +21,12 @@ const STATUS_LABELS: Record<string, string> = {
   expired: "Expired",
 };
 
-export interface CartInputLine {
+interface CartInputLine {
   variantId: string;
   quantity: number;
 }
 
-export interface QuotedLine {
+interface QuotedLine {
   variantId: string;
   sku: string;
   productTitle: string;
@@ -39,7 +39,7 @@ export interface QuotedLine {
   available: boolean;
 }
 
-export interface CartQuote {
+interface CartQuote {
   currency: string;
   lines: QuotedLine[];
   subtotalMinor: number;

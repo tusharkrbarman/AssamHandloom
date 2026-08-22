@@ -1,7 +1,7 @@
 import { HttpError } from "./http";
 
 export type PublicationState = "draft" | "published";
-export type ProductSort = "featured" | "newest" | "price_asc" | "price_desc";
+type ProductSort = "featured" | "newest" | "price_asc" | "price_desc";
 
 export interface ProductListQuery {
   search: string | null;
@@ -46,7 +46,7 @@ export interface ProductDetail extends ProductCard {
   }>;
 }
 
-export interface CollectionSummary {
+interface CollectionSummary {
   id: string;
   slug: string;
   title: string;
