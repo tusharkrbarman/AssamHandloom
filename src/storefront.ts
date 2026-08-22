@@ -281,14 +281,16 @@ function productContent(product: ProductDetail, related: ProductCard[]): string 
     </form>`
     : `<p class="empty-state">Options for this weave are being prepared.</p>`;
   return `<article class="product-detail">
-  <div class="product-detail__gallery" aria-label="${escapeHtml(product.title)} gallery">${gallery}</div>
-  <div class="product-detail__summary">
-    <p class="eyebrow">${escapeHtml(product.silkType)}${product.colour ? ` · ${escapeHtml(product.colour)}` : ""}</p>
-    <h1>${escapeHtml(product.title)}</h1>
-    <p>${escapeHtml(product.description || "A considered handloom catalogue entry, shared with material and maker context.")}</p>
-    <p class="price">${firstVariant ? escapeHtml(formatMoney(firstVariant.priceMinor, firstVariant.currency)) : "Price on request"}</p>
-    <p>${product.available ? "Available" : "Currently unavailable"}</p>
-    ${bagForm}
+  <div class="product-detail__layout">
+    <div class="product-detail__gallery" aria-label="${escapeHtml(product.title)} gallery">${gallery}</div>
+    <div class="product-detail__summary">
+      <p class="eyebrow">${escapeHtml(product.silkType)}${product.colour ? ` · ${escapeHtml(product.colour)}` : ""}</p>
+      <h1>${escapeHtml(product.title)}</h1>
+      <p>${escapeHtml(product.description || "A considered handloom catalogue entry, shared with material and maker context.")}</p>
+      <p class="price">${firstVariant ? escapeHtml(formatMoney(firstVariant.priceMinor, firstVariant.currency)) : "Price on request"}</p>
+      <p>${product.available ? "Available" : "Currently unavailable"}</p>
+      ${bagForm}
+    </div>
   </div>
   <section class="specifications" aria-labelledby="specifications-title"><h2 id="specifications-title">Specifications</h2><dl><div><dt>Silk</dt><dd>${escapeHtml(product.silkType)}</dd></div><div><dt>Dimensions</dt><dd>Verification pending</dd></div><div><dt>Care</dt><dd>Request product-specific care guidance before purchase.</dd></div><div><dt>Occasion</dt><dd>${escapeHtml(product.occasion || "Verification pending")}</dd></div></dl></section>
   <section class="provenance" aria-labelledby="provenance-title"><p class="eyebrow">Provenance</p><h2 id="provenance-title">Catalogue record</h2><dl><div><dt>Artisan</dt><dd>Verification pending</dd></div><div><dt>Region</dt><dd>Verification pending</dd></div><div><dt>Motif</dt><dd>Verification pending</dd></div><div><dt>Production details</dt><dd>Verification pending</dd></div></dl><p>Provenance details are added only after verification.</p></section>
