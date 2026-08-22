@@ -4,6 +4,7 @@ import { HttpError, json } from "./http";
 import { routeInventory } from "./inventory";
 import { routeMedia } from "./media";
 import { routeOrders } from "./orders";
+import { routePayments } from "./payments";
 import { renderStorefrontError, routeStorefront } from "./storefront";
 
 interface RequestLog {
@@ -47,6 +48,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const admin = await routeAdmin(request, env);
   if (admin) {
     return admin;
+  }
+  const payments = await routePayments(request, env);
+  if (payments) {
+    return payments;
   }
   const orders = await routeOrders(request, env);
   if (orders) {

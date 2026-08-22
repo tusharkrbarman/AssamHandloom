@@ -7,6 +7,7 @@ import {
   redirect,
   requireSameOrigin,
 } from "./http";
+import { razorpayConfig } from "./payments";
 import { shell } from "./storefront";
 
 const MAX_LINES = 20;
@@ -478,7 +479,10 @@ function countryOptions(selected: string): string {
     .join("");
 }
 
-function checkoutForm(fields?: Partial<CheckoutInput>): string {
+function checkoutForm(
+  fields?: Partial<CheckoutInput>,
+  paymentsEnabled = false,
+): string {
   const value = (name: keyof CheckoutInput): string => escapeHtml(String(fields?.[name] ?? ""));
   return `<form class="checkout-form" method="post" action="/checkout">
   <input type="hidden" name="items" id="checkout-items" value="">
@@ -504,22 +508,32 @@ function checkoutForm(fields?: Partial<CheckoutInput>): string {
     </aside>
   </div>
   <p class="order-note">Your weaves are held for ${RESERVATION_MINUTES} minutes once you place the order.
-  Online payments are not active yet — placing the order reserves stock and costs nothing.</p>
+  ${paymentsEnabled
+    ? "You can pay securely as soon as your order is placed."
+    : "Online payments are not active yet — placing the order reserves stock and costs nothing."}</p>
   <button class="button" type="submit">Place order</button>
 </form>`;
 }
 
-function checkoutContent(fields?: Partial<CheckoutInput>, message?: string): string {
+function checkoutContent(
+  fields: Partial<CheckoutInput> | undefined,
+  message: string | undefined,
+  paymentsEnabled: boolean,
+): string {
   return `<section class="commerce-page">
   <p class="eyebrow">Checkout preview</p>
   <h1>Complete your order</h1>
   ${message ? `<p class="form-alert" role="alert">${escapeHtml(message)}</p>` : ""}
-  ${checkoutForm(fields)}
+  ${checkoutForm(fields, paymentsEnabled)}
   <noscript><p class="empty-state">This checkout needs JavaScript to attach your bag.</p></noscript>
 </section>`;
 }
 
-function orderConfirmationContent(order: OrderRecord, items: OrderItemSnapshot[]): string {
+function orderConfirmationContent(
+  order: OrderRecord,
+  items: OrderItemSnapshot[],
+  paymentsEnabled: boolean,
+): string {
   const rows = items
     .map(
       (item) => `<tr>
@@ -547,8 +561,17 @@ function orderConfirmationContent(order: OrderRecord, items: OrderItemSnapshot[]
   <section aria-labelledby="ship-to-title"><h2 id="ship-to-title">Delivering to</h2>
   <p>${escapeHtml(order.shipName)}<br>${escapeHtml(order.shipAddress1)}${order.shipAddress2 ? `<br>${escapeHtml(order.shipAddress2)}` : ""}<br>
   ${escapeHtml(order.shipCity)}, ${escapeHtml(order.shipState)} ${escapeHtml(order.shipPostalCode)}<br>${escapeHtml(order.shipCountry)}</p></section>
-  <p class="order-note">Online payments open with our next release. We will email a secure payment link to
-  complete this order before the reservation window closes.</p>
+  ${
+    paymentsEnabled && order.status === "pending"
+      ? `<section class="pay-section" aria-labelledby="pay-title"><h2 id="pay-title">Complete payment</h2>
+  <p class="order-note">Your weaves stay reserved for ${RESERVATION_MINUTES} minutes. Finish payment to confirm this order.</p>
+  <button class="button" type="button" id="pay-now" data-order-id="${escapeHtml(order.id)}">Pay now</button>
+  <p class="form-alert" id="pay-error" role="alert" hidden></p></section>
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/js/pay.js" defer></script>`
+      : `<p class="order-note">Online payments open with our next release. We will email a secure payment link to
+  complete this order before the reservation window closes.</p>`
+  }
 </section>`;
 }
 
@@ -556,6 +579,7 @@ async function renderCheckoutWithError(
   request: Request,
   form: FormData,
   error: HttpError,
+  paymentsEnabled: boolean,
 ): Promise<Response> {
   let fields: Partial<CheckoutInput>;
   try {
@@ -563,12 +587,13 @@ async function renderCheckoutWithError(
   } catch {
     fields = {};
   }
-  return shell(request, "Checkout · Luit & Loom", checkoutContent(fields, error.message), error.status);
+  return shell(request, "Checkout · Luit & Loom", checkoutContent(fields, error.message, paymentsEnabled), error.status);
 }
 
 export async function routeOrders(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
+  const paymentsEnabled = razorpayConfig(env) !== null;
 
   if (request.method === "GET" && path === "/cart") {
     return shell(request, "Your bag · Luit & Loom", cartContent());
@@ -582,7 +607,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
   }
 
   if (request.method === "GET" && path === "/checkout") {
-    return shell(request, "Checkout · Luit & Loom", checkoutContent());
+    return shell(request, "Checkout · Luit & Loom", checkoutContent(undefined, undefined, paymentsEnabled));
   }
 
   if (request.method === "POST" && path === "/checkout") {
@@ -594,7 +619,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
       return redirect(`/orders/${orderId}?token=${token}`);
     } catch (error) {
       if (error instanceof HttpError) {
-        return renderCheckoutWithError(request, form, error);
+        return renderCheckoutWithError(request, form, error, paymentsEnabled);
       }
       throw error;
     }
@@ -610,7 +635,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
     return shell(
       request,
       `Order ${order.id.slice(0, 8).toUpperCase()} · Luit & Loom`,
-      orderConfirmationContent(order, items),
+      orderConfirmationContent(order, items, paymentsEnabled),
     );
   }
 
