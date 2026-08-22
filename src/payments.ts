@@ -1,4 +1,5 @@
 import { HttpError, json, requireSameOrigin } from "./http";
+import { enqueueOrderEmail } from "./email";
 
 const RAZORPAY_ORDERS_URL = "https://api.razorpay.com/v1/orders";
 
@@ -350,7 +351,10 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     if (amount !== row.amount_minor || currency !== row.currency) {
       throw new HttpError(409, "payment_amount_mismatch", "The reported payment does not match this order.");
     }
-    await applyCapturedPayment(env.DB, row, providerPaymentId);
+    const outcome = await applyCapturedPayment(env.DB, row, providerPaymentId);
+    if (outcome === "captured") {
+      await enqueueOrderEmail(env.DB, env, "order_paid", row.order_id);
+    }
   }
 
   return json({ received: true });
@@ -405,7 +409,10 @@ export async function routePayments(request: Request, env: Env): Promise<Respons
     if (!signaturesMatch(expected, signature)) {
       throw new HttpError(400, "invalid_payment_signature", "We could not confirm this payment. No money was captured by us.");
     }
-    await applyCapturedPayment(env.DB, payment, razorpayPaymentId);
+    const outcome = await applyCapturedPayment(env.DB, payment, razorpayPaymentId);
+    if (outcome === "captured") {
+      await enqueueOrderEmail(env.DB, env, "order_paid", payment.order_id);
+    }
     return json({ status: "paid" });
   }
 

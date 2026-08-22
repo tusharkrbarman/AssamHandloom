@@ -25,6 +25,14 @@ export default defineConfig(async () => {
                 { status: 200 },
               );
             }
+            if (url.hostname === "api.resend.com" && url.pathname === "/emails") {
+              const body = (await request.json()) as { to?: string[] };
+              const recipient = Array.isArray(body.to) ? (body.to[0] ?? "") : "";
+              if (recipient.startsWith("fail")) {
+                return Response.json({ message: "mailbox unavailable" }, { status: 500 });
+              }
+              return Response.json({ id: "email_stub_1" }, { status: 200 });
+            }
             return new Response(`unexpected outbound fetch to ${url.origin}`, { status: 599 });
           },
           bindings: {
@@ -34,6 +42,9 @@ export default defineConfig(async () => {
             RAZORPAY_KEY_ID: "rzp_test_1234567890abcdef",
             RAZORPAY_KEY_SECRET: "test-key-secret-with-at-least-32-characters",
             RAZORPAY_WEBHOOK_SECRET: "test-webhook-secret-with-at-least-32-char",
+            RESEND_API_KEY: "test-resend-api-key-1234567890",
+            MAIL_FROM: "Luit & Loom <orders@test.example>",
+            PUBLIC_BASE_URL: "https://orders.test.example",
             TEST_MIGRATIONS: migrations,
           },
         },

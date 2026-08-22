@@ -21,6 +21,9 @@
       "bucket_name": "luit-and-loom-media"
     }
   ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "secrets": {
     "required": [
       "ADMIN_SETUP_TOKEN",
