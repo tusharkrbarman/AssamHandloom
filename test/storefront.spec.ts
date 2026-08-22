@@ -188,6 +188,7 @@ describe("Quiet Commerce storefront", () => {
     expect(body).toContain('<details class="mobile-disclosure">');
     expect(body).toContain('role="search"');
     expect(body).toContain('href="/css/site.css"');
-    expect(body).not.toContain("<script");
+    const scripts = body.match(/<script\b[^>]*>/g) ?? [];
+    expect(scripts).toEqual(['<script src="/js/bag.js" defer>']);
   });
 });
