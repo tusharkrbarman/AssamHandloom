@@ -124,9 +124,14 @@
             return line.v.toLowerCase() !== button.getAttribute("data-remove").toLowerCase();
           })
         );
-        renderCart();
+        refreshBagUi();
       });
     });
+  }
+
+  function refreshBagUi() {
+    renderCart();
+    renderCheckoutSummary();
   }
 
   function renderCheckoutSummary() {
@@ -149,6 +154,7 @@
         (quote.allAvailable
           ? ""
           : '<p class="form-alert" role="alert">A weave just sold out. Return to your <a href="/cart">bag</a>.</p>');
+      bindRemoveButtons(summary);
     }).catch(function () {
       summary.innerHTML = '<p class="form-alert" role="alert">We could not price your bag. Please refresh.</p>';
     });
