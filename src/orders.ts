@@ -8,6 +8,8 @@ import {
   requireSameOrigin,
 } from "./http";
 import { razorpayConfig } from "./payments";
+import { enqueueOrderEmail } from "./email";
+import { verifyOrderLink } from "./links";
 import { shell } from "./storefront";
 
 const MAX_LINES = 20;
@@ -409,13 +411,13 @@ async function createOrderRecord(
 async function loadOrder(
   db: D1Database,
   orderId: string,
-  token: string,
+  token: string | null,
 ): Promise<{ order: OrderRecord; items: OrderItemSnapshot[] }> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
     throw new HttpError(404, "not_found", "That order could not be found.");
   }
   const order = await db.prepare("SELECT * FROM orders WHERE id = ?").bind(orderId).first<OrderRow>();
-  if (!order || order.token !== token) {
+  if (!order || (token !== null && order.token !== token)) {
     throw new HttpError(404, "not_found", "That order could not be found.");
   }
   const itemResult = await db
@@ -616,6 +618,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
     try {
       const fields = parseCheckoutFields(form);
       const { orderId, token } = await createOrderRecord(env.DB, fields);
+      await enqueueOrderEmail(env.DB, env, "order_confirmation", orderId);
       return redirect(`/orders/${orderId}?token=${token}`);
     } catch (error) {
       if (error instanceof HttpError) {
@@ -627,11 +630,22 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
 
   const orderMatch = /^\/orders\/([0-9a-f-]{36})$/i.exec(path);
   if (request.method === "GET" && orderMatch?.[1]) {
-    const { order, items } = await loadOrder(
-      env.DB,
-      orderMatch[1],
-      url.searchParams.get("token") ?? "",
-    );
+    const orderId = orderMatch[1];
+    const tokenParam = url.searchParams.get("token");
+    let authorized = tokenParam !== null;
+    if (!authorized) {
+      const expiresAt = Number(url.searchParams.get("exp"));
+      authorized = await verifyOrderLink(
+        env,
+        orderId,
+        expiresAt,
+        url.searchParams.get("sig"),
+      );
+    }
+    if (!authorized) {
+      throw new HttpError(404, "not_found", "That order could not be found.");
+    }
+    const { order, items } = await loadOrder(env.DB, orderId, tokenParam);
     return shell(
       request,
       `Order ${order.id.slice(0, 8).toUpperCase()} · Luit & Loom`,

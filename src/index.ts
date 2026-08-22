@@ -6,6 +6,7 @@ import { routeMedia } from "./media";
 import { routeOrders } from "./orders";
 import { routePayments } from "./payments";
 import { renderStorefrontError, routeStorefront } from "./storefront";
+import { runMaintenance } from "./maintenance";
 
 interface RequestLog {
   requestId: string;
@@ -114,5 +115,9 @@ export default {
     }
     console.log(JSON.stringify(entry));
     return response;
+  },
+
+  async scheduled(_controller, env, _ctx): Promise<void> {
+    await runMaintenance(env);
   },
 } satisfies ExportedHandler<Env>;
