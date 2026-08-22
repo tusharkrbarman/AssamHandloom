@@ -70,11 +70,12 @@ function header(): string {
         <input id="site-search" name="search" type="search" placeholder="Find your weave" autocomplete="off">
         <button class="visually-hidden" type="submit">Search</button>
       </form>
+      <a class="bag-link" href="/account">Account</a>
       <a class="bag-link" href="/cart">Bag (<span data-bag-count>0</span>)</a>
       <details class="mobile-disclosure">
         <summary class="disclosure-button">Browse</summary>
         <nav class="mobile-navigation" aria-label="Mobile navigation">
-          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/cart">Your bag</a><a href="/search">Search</a>
+          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/account">Your account</a><a href="/cart">Your bag</a><a href="/search">Search</a>
         </nav>
       </details>
     </div>

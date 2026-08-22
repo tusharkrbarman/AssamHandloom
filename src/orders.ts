@@ -10,6 +10,7 @@ import {
 import { razorpayConfig } from "./payments";
 import { enqueueOrderEmail } from "./email";
 import { verifyOrderLink } from "./links";
+import { optionalMemberEmail } from "./customers";
 import { shell } from "./storefront";
 
 const MAX_LINES = 20;
@@ -609,7 +610,12 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
   }
 
   if (request.method === "GET" && path === "/checkout") {
-    return shell(request, "Checkout · Luit & Loom", checkoutContent(undefined, undefined, paymentsEnabled));
+    const memberEmail = await optionalMemberEmail(request, env);
+    return shell(
+      request,
+      "Checkout · Luit & Loom",
+      checkoutContent(memberEmail ? { email: memberEmail } : undefined, undefined, paymentsEnabled),
+    );
   }
 
   if (request.method === "POST" && path === "/checkout") {

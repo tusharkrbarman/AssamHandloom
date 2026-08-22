@@ -1,5 +1,6 @@
 import { routeAdmin } from "./admin";
 import { routeAuth } from "./auth";
+import { routeCustomers } from "./customers";
 import { HttpError, json } from "./http";
 import { routeInventory } from "./inventory";
 import { routeMedia } from "./media";
@@ -41,6 +42,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const auth = await routeAuth(request, env);
   if (auth) {
     return auth;
+  }
+  const customers = await routeCustomers(request, env);
+  if (customers) {
+    return customers;
   }
   const inventory = await routeInventory(request, env);
   if (inventory) {

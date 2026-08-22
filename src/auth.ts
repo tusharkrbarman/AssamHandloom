@@ -22,6 +22,25 @@ interface OwnerRecord {
   session_version: number;
 }
 
+export interface PasswordRecordRef {
+  password_hash: string;
+  password_salt: string;
+  password_iterations: number;
+}
+
+export function formText(form: FormData, key: string): string {
+  const value = form.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+export function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
 interface LockoutRecord {
   failed_count: number;
   locked_until: string | null;
@@ -43,20 +62,7 @@ export interface AuthenticatedOwner {
   session: AdminSession;
 }
 
-function formText(form: FormData, key: string): string {
-  const value = form.get(key);
-  return typeof value === "string" ? value : "";
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function fromBase64Url(value: string): Uint8Array {
+export function fromBase64Url(value: string): Uint8Array {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
   try {
@@ -66,7 +72,7 @@ function fromBase64Url(value: string): Uint8Array {
   }
 }
 
-function randomToken(byteLength = 32): string {
+export function randomToken(byteLength = 32): string {
   return toBase64Url(crypto.getRandomValues(new Uint8Array(byteLength)));
 }
 
@@ -84,7 +90,7 @@ function timingSafeBytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
-async function timingSafeTextEqual(left: string, right: string): Promise<boolean> {
+export async function timingSafeTextEqual(left: string, right: string): Promise<boolean> {
   const [leftDigest, rightDigest] = await Promise.all([digest(left), digest(right)]);
   return timingSafeBytesEqual(leftDigest, rightDigest);
 }
@@ -110,7 +116,7 @@ async function derivePassword(
   );
 }
 
-async function passwordRecord(password: string): Promise<{
+export async function passwordRecord(password: string): Promise<{
   hash: string;
   salt: string;
   iterations: number;
@@ -123,7 +129,7 @@ async function passwordRecord(password: string): Promise<{
   };
 }
 
-function normalizedEmail(value: string): string {
+export function normalizedEmail(value: string): string {
   const email = value.trim().toLowerCase();
   const parts = email.split("@");
   if (
@@ -139,7 +145,7 @@ function normalizedEmail(value: string): string {
   return email;
 }
 
-function validPassword(value: string): string {
+export function validPassword(value: string): string {
   const length = [...value].length;
   if (length < 12 || length > 128) {
     throw new HttpError(
@@ -158,7 +164,7 @@ function validSecret(value: string): string {
   return value;
 }
 
-async function hmacKey(secret: string): Promise<CryptoKey> {
+export async function hmacKey(secret: string): Promise<CryptoKey> {
   if (secret.length < 32) {
     throw new HttpError(500, "invalid_configuration", "Authentication is unavailable.");
   }
@@ -294,12 +300,12 @@ export async function requireCsrf(
   }
 }
 
-async function lockoutKey(request: Request, email: string): Promise<string> {
+export async function lockoutKey(request: Request, purpose: string, email: string): Promise<string> {
   const source = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  return toBase64Url(await digest(`${email}\u0000${source}`));
+  return toBase64Url(await digest(`${purpose}\u0000${email}\u0000${source}`));
 }
 
-async function activeLockout(
+export async function activeLockout(
   db: D1Database,
   key: string,
   now: Date,
@@ -311,7 +317,7 @@ async function activeLockout(
   return Boolean(row?.locked_until && Date.parse(row.locked_until) > now.getTime());
 }
 
-async function recordFailure(
+export async function recordFailure(
   db: D1Database,
   key: string,
   now: Date,
@@ -339,7 +345,7 @@ async function recordFailure(
     .run();
 }
 
-async function passwordMatches(password: string, owner: OwnerRecord | null): Promise<boolean> {
+export async function passwordMatches(password: string, owner: PasswordRecordRef | null): Promise<boolean> {
   const salt = owner ? fromBase64Url(owner.password_salt) : new Uint8Array(16);
   const iterations = owner?.password_iterations ?? PASSWORD_ITERATIONS;
   const actual = await derivePassword(password, salt, iterations);
@@ -347,7 +353,7 @@ async function passwordMatches(password: string, owner: OwnerRecord | null): Pro
   return timingSafeBytesEqual(actual, expected);
 }
 
-function authPage(title: string, body: string): Response {
+export function authPage(title: string, body: string): Response {
   return html(`<!doctype html>
 <html lang="en-IN">
 <head>
@@ -438,7 +444,7 @@ async function login(request: Request, env: Env): Promise<Response> {
   const form = await readForm(request);
   const email = normalizedEmail(formText(form, "email"));
   const password = validPassword(formText(form, "password"));
-  const key = await lockoutKey(request, email);
+  const key = await lockoutKey(request, "admin", email);
   const now = new Date();
   if (await activeLockout(env.DB, key, now)) {
     throw new HttpError(429, "login_locked", "Sign in is temporarily unavailable.");
@@ -538,3 +544,4 @@ export async function routeAuth(
   }
   return null;
 }
+
