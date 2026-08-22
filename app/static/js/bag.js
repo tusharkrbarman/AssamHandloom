@@ -78,19 +78,16 @@
 
   function renderLines(quote) {
     var rows = quote.lines.map(function (line) {
-      var status = line.available
+      var action = line.available
         ? '<button class="text-link" type="button" data-remove="' + escapeHtml(line.variantId) + '">Remove</button>'
-        : '<p class="availability is-unavailable">Just sold out — remove to continue</p>';
-      return "<tr><th scope=\"row\">" + escapeHtml(line.productTitle) +
-        " · " + escapeHtml(line.variantTitle) + "</th><td>" + line.quantity +
-        "</td><td>" + escapeHtml(line.unitPriceFormatted) +
-        "</td><td>" + escapeHtml(line.lineTotalFormatted) +
-        "</td><td>" + status + "</td></tr>";
+        : '<p class="availability is-unavailable">Just sold out</p>';
+      return '<tr class="bag-table__item"><th colspan="3">' + escapeHtml(line.productTitle) +
+        '<span class="bag-table__variant">' + escapeHtml(line.variantTitle) + '</span></th></tr>' +
+        '<tr class="bag-table__line"><td>' + line.quantity + ' \u00d7 ' + escapeHtml(line.unitPriceFormatted) +
+        '</td><td class="is-numeric">' + escapeHtml(line.lineTotalFormatted) +
+        '</td><td class="bag-table__action">' + action + '</td></tr>';
     }).join("");
-    return '<table class="bag-table"><thead><tr>' +
-      '<th scope="col">Item</th><th scope="col">Qty</th><th scope="col">Each</th>' +
-      '<th scope="col">Total</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>' +
-      "<tbody>" + rows + "</tbody></table>" +
+    return '<table class="bag-table bag-table--stacked"><tbody>' + rows + '</tbody></table>' +
       '<dl class="summary-totals"><div><dt>Subtotal</dt><dd>' +
       escapeHtml(quote.subtotalFormatted) + "</dd></div></dl>";
   }
