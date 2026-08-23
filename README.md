@@ -79,8 +79,9 @@ pnpm run verify
   outbox
 - A five-minute maintenance cron that releases expired reservations, expires
   abandoned pending orders, and drains the email outbox
+- Owner order desk at `/admin/orders`: review orders, customer addresses, and
+  payments; mark paid or shipped (with a shipped notification), or cancel
 - Optional customer accounts with order history
 
 Not included yet: refunds, coupons, reviews, shipping or tax automation,
-order status emails beyond confirmation and payment, and staff roles beyond
-the single owner.
+delivery status emails beyond shipping, and staff roles beyond the single owner.

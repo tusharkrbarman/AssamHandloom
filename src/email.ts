@@ -6,7 +6,7 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const MAX_ATTEMPTS = 5;
 const BACKOFF_CAP_MINUTES = 60;
 
-export type OutboxKind = "order_confirmation" | "order_paid";
+export type OutboxKind = "order_confirmation" | "order_paid" | "order_shipped";
 
 interface MailSecrets {
   RESEND_API_KEY?: string;
@@ -38,6 +38,7 @@ interface OrderEmailRow {
   shipping_minor: number;
   total_minor: number;
   ship_name: string;
+  ship_city: string;
   created_at: string;
 }
 
@@ -104,7 +105,7 @@ async function buildOrderEmail(
   const order = await db
     .prepare(
       `SELECT id, email, status, currency, subtotal_minor, shipping_minor,
-        total_minor, ship_name, created_at FROM orders WHERE id = ?`,
+        total_minor, ship_name, ship_city, created_at FROM orders WHERE id = ?`,
     )
     .bind(orderId)
     .first<OrderEmailRow>();
@@ -131,7 +132,9 @@ async function buildOrderEmail(
   const subject =
     kind === "order_confirmation"
       ? `Your Luit & Loom order ${reference}`
-      : `Payment received — Luit & Loom order ${reference}`;
+      : kind === "order_paid"
+        ? `Payment received — Luit & Loom order ${reference}`
+        : `Your Luit & Loom order ${reference} has shipped`;
   let actionHtml = "";
   if (kind === "order_confirmation" && order.status === "pending") {
     const baseUrl = mailConfig(env)?.baseUrl.replace(/\/$/, "") ?? "";
@@ -143,7 +146,9 @@ async function buildOrderEmail(
   const intro =
     kind === "order_confirmation"
       ?       `<p>Hello ${escapeHtml(order.ship_name)}, thank you for your order. We have reserved your weaves and will confirm once payment is complete.</p>`
-      : `<p>Hello ${escapeHtml(order.ship_name)}, we have received your payment. Your weaves are confirmed and will be prepared for dispatch.</p>`;
+      : kind === "order_paid"
+        ? `<p>Hello ${escapeHtml(order.ship_name)}, we have received your payment. Your weaves are confirmed and will be prepared for dispatch.</p>`
+        : `<p>Hello ${escapeHtml(order.ship_name)}, your order has been dispatched and is on its way to ${escapeHtml(order.ship_city)}. Thank you for supporting handwoven silk.</p>`;
   const html = `<div style="font-family:Georgia,serif; max-width:560px; margin:0 auto">
     <h2 style="font-weight:normal">Luit &amp; Loom</h2>
     ${intro}
