@@ -96,7 +96,7 @@ export function adminPage(
   <header class="site-header"><div class="container header-inner">
     <a class="wordmark" href="/">Luit <span>&amp;</span> Loom</a>
     <nav aria-label="Owner navigation">
-      <a href="/admin">Products</a> <a href="/admin/collections">Collections</a>
+      <a href="/admin">Products</a> <a href="/admin/orders">Orders</a> <a href="/admin/collections">Collections</a>
       <a href="/admin/inventory">Inventory</a>
       <form method="post" action="/admin/logout" style="display:inline">
         <input type="hidden" name="csrf" value="${escapeHtml(authenticated.session.csrf)}">

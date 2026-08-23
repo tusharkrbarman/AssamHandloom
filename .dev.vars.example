@@ -7,3 +7,9 @@ COOKIE_SIGNING_KEY=replace-with-an-independent-random-value-at-least-32-characte
 # RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxxxxxx
 # RAZORPAY_KEY_SECRET=replace-with-your-razorpay-key-secret
 # RAZORPAY_WEBHOOK_SECRET=replace-with-your-razorpay-webhook-secret
+
+# Optional — set both to enable order confirmation and payment email.
+# PUBLIC_BASE_URL adds a passwordless order link to pending-order emails.
+# RESEND_API_KEY=replace-with-your-resend-api-key
+# MAIL_FROM="Luit & Loom <orders@your-domain.example>"
+# PUBLIC_BASE_URL=https://your-worker.your-subdomain.workers.dev

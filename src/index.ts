@@ -1,4 +1,5 @@
 import { routeAdmin } from "./admin";
+import { routeAdminOrders } from "./adminOrders";
 import { routeAuth } from "./auth";
 import { routeCustomers } from "./customers";
 import { HttpError, json } from "./http";
@@ -50,6 +51,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const inventory = await routeInventory(request, env);
   if (inventory) {
     return inventory;
+  }
+  const adminOrders = await routeAdminOrders(request, env);
+  if (adminOrders) {
+    return adminOrders;
   }
   const admin = await routeAdmin(request, env);
   if (admin) {
