@@ -141,7 +141,10 @@ describe("signed order links", () => {
   it("rejects tampered signatures", async () => {
     const { orderId } = await placeOrder();
     const link = await createOrderLink(env, orderId);
-    const tampered = link.replace(/sig=[0-9a-f]{2}/, "sig=ff");
+    const tampered = link.replace(/sig=([0-9a-f])/, (_match, first: string) =>
+      `sig=${first === "0" ? "1" : "0"}`,
+    );
+    expect(tampered).not.toBe(link);
     const response = await SELF.fetch(`${ORIGIN}/orders/${tampered}`, { redirect: "manual" });
     expect(response.status).toBe(404);
   });
