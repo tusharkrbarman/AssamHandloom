@@ -1,5 +1,7 @@
 import { HttpError, json, requireSameOrigin } from "./http";
 import { enqueueOrderEmail } from "./email";
+import { enforceRateLimit } from "./ratelimit";
+import { expirePendingOrder, settleOrderStock } from "./settlement";
 
 const RAZORPAY_ORDERS_URL = "https://api.razorpay.com/v1/orders";
 
@@ -19,6 +21,14 @@ interface PayableOrder {
   id: string;
   totalMinor: number;
   currency: string;
+}
+
+interface PayableOrderRow {
+  id: string;
+  status: string;
+  total_minor: number;
+  currency: string;
+  reservations_payable: number;
 }
 
 interface OrderPaymentRow {
@@ -114,15 +124,41 @@ async function loadPayableOrder(
   if (!uuidPattern.test(id) || !uuidPattern.test(value)) {
     throw new HttpError(404, "not_found", "That order could not be found.");
   }
+  const at = nowIso();
   const order = await db
-    .prepare("SELECT id, status, total_minor, currency FROM orders WHERE id = ? AND token = ?")
-    .bind(id, value)
-    .first<{ id: string; status: string; total_minor: number; currency: string }>();
+    .prepare(
+      `SELECT id, status, total_minor, currency,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM inventory_reservations WHERE order_id = orders.id
+        ) AND NOT EXISTS (
+          SELECT 1
+          FROM inventory_reservations reservation
+          LEFT JOIN inventory_items stock ON stock.variant_id = reservation.variant_id
+          WHERE reservation.order_id = orders.id
+            AND (
+              reservation.state <> 'active'
+              OR reservation.expires_at <= ?
+              OR stock.variant_id IS NULL
+              OR stock.quantity < reservation.quantity
+            )
+        ) THEN 1 ELSE 0 END AS reservations_payable
+      FROM orders WHERE id = ? AND token = ?`,
+    )
+    .bind(at, id, value)
+    .first<PayableOrderRow>();
   if (!order) {
     throw new HttpError(404, "not_found", "That order could not be found.");
   }
   if (order.status !== "pending") {
     throw new HttpError(409, "payment_not_pending", "This order is not awaiting payment.");
+  }
+  if (order.reservations_payable !== 1) {
+    await expirePendingOrder(db, order.id, at);
+    throw new HttpError(
+      409,
+      "reservation_expired",
+      "This reservation has expired. Please place the order again before paying.",
+    );
   }
   return { id: order.id, totalMinor: order.total_minor, currency: order.currency };
 }
@@ -251,30 +287,39 @@ export async function applyCapturedPayment(
   db: D1Database,
   payment: OrderPaymentRow,
   providerPaymentId: string,
-): Promise<"captured" | "already_captured"> {
+): Promise<"captured" | "already_captured" | "requires_review"> {
+  let alreadyCaptured = payment.status === "captured";
   if (payment.status === "captured") {
-    if (payment.provider_payment_id === providerPaymentId) {
-      return "already_captured";
+    if (payment.provider_payment_id !== providerPaymentId) {
+      throw new HttpError(409, "payment_conflict", "This order was already paid with a different payment.");
     }
-    throw new HttpError(409, "payment_conflict", "This order was already paid with a different payment.");
-  }
-  const at = nowIso();
-  await db.batch([
-    db
+  } else {
+    const at = nowIso();
+    const update = await db
       .prepare(
         `UPDATE order_payments
         SET provider_payment_id = ?, status = 'captured', failure_reason = NULL, updated_at = ?
         WHERE id = ? AND status <> 'captured'`,
       )
-      .bind(providerPaymentId, at, payment.id),
-    db
-      .prepare("UPDATE orders SET status = 'paid', updated_at = ? WHERE id = ? AND status = 'pending'")
-      .bind(at, payment.order_id),
-    db
-      .prepare("UPDATE inventory_reservations SET state = 'consumed' WHERE order_id = ? AND state = 'active'")
-      .bind(payment.order_id),
-  ]);
-  return "captured";
+      .bind(providerPaymentId, at, payment.id)
+      .run();
+    if ((update.meta.changes ?? 0) === 0) {
+      const stored = await db.prepare(
+        "SELECT provider_payment_id, status FROM order_payments WHERE id = ?",
+      )
+        .bind(payment.id)
+        .first<{ provider_payment_id: string | null; status: string }>();
+      if (stored?.status !== "captured" || stored.provider_payment_id !== providerPaymentId) {
+        throw new HttpError(409, "payment_conflict", "This order was already paid with a different payment.");
+      }
+      alreadyCaptured = true;
+    }
+  }
+
+  const settlement = await settleOrderStock(db, payment.order_id, "payment");
+  if (settlement === "paid") return "captured";
+  if (settlement === "already_paid" && alreadyCaptured) return "already_captured";
+  return "requires_review";
 }
 
 interface RazorpayEventPayload {
@@ -282,6 +327,7 @@ interface RazorpayEventPayload {
   payload?: {
     payment?: { entity?: Record<string, unknown> | null };
     order?: { entity?: Record<string, unknown> | null };
+    refund?: { entity?: Record<string, unknown> | null };
   } | null;
 }
 
@@ -308,6 +354,44 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     throw new HttpError(400, "invalid_webhook_payload", "The webhook payload could not be read.");
   }
   const type = typeof event.event === "string" ? event.event : "";
+
+  if (type === "refund.processed" || type === "refund.failed") {
+    const entity = event.payload?.refund?.entity;
+    if (!entity) return json({ received: true });
+    const providerRefundId = eventText(entity, "id");
+    const providerPaymentId = eventText(entity, "payment_id");
+    const status = type === "refund.processed" ? "processed" : "failed";
+    if (!providerRefundId.startsWith("rfnd_") || !providerPaymentId.startsWith("pay_")) {
+      return json({ received: true });
+    }
+    const refund = await env.DB.prepare(
+      `SELECT refund.id, refund.amount_minor, refund.currency, payment.provider_payment_id
+      FROM order_refunds refund
+      JOIN order_payments payment ON payment.id = refund.payment_id
+      WHERE refund.provider_refund_id = ?`,
+    )
+      .bind(providerRefundId)
+      .first<{
+        id: string;
+        amount_minor: number;
+        currency: string;
+        provider_payment_id: string | null;
+      }>();
+    if (!refund) return json({ received: true });
+    const amount = typeof entity.amount === "number" ? Math.floor(entity.amount) : Number.NaN;
+    const currency = eventText(entity, "currency").toUpperCase();
+    if (
+      refund.provider_payment_id !== providerPaymentId ||
+      refund.amount_minor !== amount ||
+      refund.currency !== currency
+    ) {
+      throw new HttpError(409, "refund_mismatch", "The reported refund does not match this order.");
+    }
+    await env.DB.prepare("UPDATE order_refunds SET status = ? WHERE id = ?")
+      .bind(status, refund.id)
+      .run();
+    return json({ received: true });
+  }
 
   if (type === "payment.failed") {
     const entity = event.payload?.payment?.entity;
@@ -365,6 +449,7 @@ export async function routePayments(request: Request, env: Env): Promise<Respons
 
   if (request.method === "POST" && path === "/api/payments/session") {
     requireSameOrigin(request);
+    await enforceRateLimit(env, request, "payment-session");
     const config = razorpayConfig(env);
     if (!config) {
       throw new HttpError(503, "payments_disabled", "Online payments are not available yet.");
@@ -382,6 +467,7 @@ export async function routePayments(request: Request, env: Env): Promise<Respons
 
   if (request.method === "POST" && path === "/api/payments/verify") {
     requireSameOrigin(request);
+    await enforceRateLimit(env, request, "payment-verify");
     const config = razorpayConfig(env);
     if (!config) {
       throw new HttpError(503, "payments_disabled", "Online payments are not available yet.");
@@ -410,6 +496,13 @@ export async function routePayments(request: Request, env: Env): Promise<Respons
       throw new HttpError(400, "invalid_payment_signature", "We could not confirm this payment. No money was captured by us.");
     }
     const outcome = await applyCapturedPayment(env.DB, payment, razorpayPaymentId);
+    if (outcome === "requires_review") {
+      throw new HttpError(
+        409,
+        "payment_requires_review",
+        "Payment was received after the reservation expired. The store owner will review or refund it.",
+      );
+    }
     if (outcome === "captured") {
       await enqueueOrderEmail(env.DB, env, "order_paid", payment.order_id);
     }

@@ -2,7 +2,7 @@ import { routeAdmin } from "./admin";
 import { routeAdminOrders } from "./adminOrders";
 import { routeAuth } from "./auth";
 import { routeCustomers } from "./customers";
-import { HttpError, json } from "./http";
+import { applySecurityHeaders, HttpError, json } from "./http";
 import { routeInventory } from "./inventory";
 import { routeMedia } from "./media";
 import { routeOrders } from "./orders";
@@ -107,11 +107,13 @@ export default {
 
     const headers = new Headers(response.headers);
     headers.set("x-request-id", requestId);
-    response = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
+    response = applySecurityHeaders(
+      new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      }),
+    );
 
     const entry: RequestLog = {
       requestId,

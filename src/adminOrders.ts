@@ -3,6 +3,8 @@ import { AuthenticatedOwner, requireCsrf, requireOwner } from "./auth";
 import { formatMoney } from "./catalogue";
 import { enqueueOrderEmail } from "./email";
 import { escapeHtml, HttpError, readForm, redirect } from "./http";
+import { refundOrderPayment, RefundRow } from "./refunds";
+import { settleOrderStock } from "./settlement";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -37,6 +39,7 @@ interface OrderListRow {
   status: string;
   currency: string;
   total_minor: number;
+  refunded_minor: number;
   created_at: string;
 }
 
@@ -71,6 +74,7 @@ interface OrderItemRow {
 }
 
 interface OrderPaymentRow {
+  id: string;
   provider_order_id: string;
   provider_payment_id: string | null;
   amount_minor: number;
@@ -95,12 +99,16 @@ async function ordersListPage(
   const statement =
     filter === "all"
       ? env.DB.prepare(
-          `SELECT id, email, ship_name, status, currency, total_minor, created_at
-          FROM orders ORDER BY created_at DESC LIMIT 200`,
+          `SELECT o.id, o.email, o.ship_name, o.status, o.currency, o.total_minor,
+          COALESCE((SELECT SUM(r.amount_minor) FROM order_refunds r WHERE r.order_id = o.id AND r.status = 'processed'), 0) AS refunded_minor,
+          o.created_at
+          FROM orders o ORDER BY o.created_at DESC LIMIT 200`,
         )
       : env.DB.prepare(
-          `SELECT id, email, ship_name, status, currency, total_minor, created_at
-          FROM orders WHERE status = ? ORDER BY created_at DESC LIMIT 200`,
+          `SELECT o.id, o.email, o.ship_name, o.status, o.currency, o.total_minor,
+          COALESCE((SELECT SUM(r.amount_minor) FROM order_refunds r WHERE r.order_id = o.id AND r.status = 'processed'), 0) AS refunded_minor,
+          o.created_at
+          FROM orders o WHERE o.status = ? ORDER BY o.created_at DESC LIMIT 200`,
         ).bind(filter);
   const result = await statement.all<OrderListRow>();
   const filters = FILTERS.map(
@@ -111,14 +119,17 @@ async function ordersListPage(
   ).join(" · ");
   const rows = (result.results ?? [])
     .map(
-      (order) => `<tr>
+      (order) => {
+        const refunded = order.refunded_minor >= order.total_minor && order.total_minor > 0;
+        return `<tr>
         <td><a href="/admin/orders/${order.id}">${escapeHtml(shortReference(order.id))}</a></td>
         <td>${escapeHtml(order.ship_name)}</td>
         <td>${escapeHtml(order.email)}</td>
-        <td>${escapeHtml(STATUS_LABELS[order.status] ?? order.status)}</td>
+        <td>${refunded ? "Refunded" : escapeHtml(STATUS_LABELS[order.status] ?? order.status)}</td>
         <td>${escapeHtml(formatMoney(order.total_minor, order.currency))}</td>
         <td>${escapeHtml(shortTime(order.created_at))}</td>
-      </tr>`,
+      </tr>`;
+      },
     )
     .join("");
   return adminPage(
@@ -154,15 +165,19 @@ async function orderDetailPage(
   if (!UUID_PATTERN.test(orderId)) {
     throw new HttpError(404, "not_found", "That order could not be found.");
   }
-  const [orderResult, itemResult, paymentResult] = await env.DB.batch([
+  const [orderResult, itemResult, paymentResult, refundResult] = await env.DB.batch([
     env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(orderId),
     env.DB.prepare(
       `SELECT product_title, variant_title, sku, quantity, unit_price_minor, currency, line_total_minor
       FROM order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC`,
     ).bind(orderId),
     env.DB.prepare(
-      `SELECT provider_order_id, provider_payment_id, amount_minor, currency, status, failure_reason
+      `SELECT id, provider_order_id, provider_payment_id, amount_minor, currency, status, failure_reason
       FROM order_payments WHERE order_id = ? ORDER BY created_at DESC`,
+    ).bind(orderId),
+    env.DB.prepare(
+      `SELECT id, payment_id, provider_refund_id, amount_minor, currency, status, created_at
+      FROM order_refunds WHERE order_id = ? ORDER BY created_at DESC`,
     ).bind(orderId),
   ]);
   const order = orderResult?.results?.[0] as unknown as OrderDetailRow | undefined;
@@ -171,6 +186,20 @@ async function orderDetailPage(
   }
   const items = (itemResult?.results ?? []) as unknown as OrderItemRow[];
   const payments = (paymentResult?.results ?? []) as unknown as OrderPaymentRow[];
+  const refunds = (refundResult?.results ?? []) as unknown as RefundRow[];
+  const refundedTotal = refunds
+    .filter((refund) => refund.status !== "failed")
+    .reduce((sum, refund) => sum + refund.amount_minor, 0);
+  const capturedPayment = payments.find(
+    (payment) => payment.status === "captured" && payment.provider_payment_id,
+  );
+  const canRefund =
+    capturedPayment !== undefined &&
+    refundedTotal < (capturedPayment?.amount_minor ?? 0);
+  const paymentReview =
+    capturedPayment !== undefined && !["paid", "fulfilled"].includes(order.status)
+      ? '<p role="alert"><strong>Payment requires review.</strong> Money was captured after this order closed; refund it unless fulfilment is confirmed manually.</p>'
+      : "";
 
   const itemRows = items
     .map(
@@ -193,6 +222,32 @@ async function orderDetailPage(
       </tr>`,
     )
     .join("");
+  const refundRows = refunds
+    .map(
+      (refund) => `<tr>
+        <td>${escapeHtml(refund.provider_refund_id)}</td>
+        <td>${escapeHtml(refund.status)}</td>
+        <td>${escapeHtml(formatMoney(refund.amount_minor, refund.currency))}</td>
+        <td>${escapeHtml(shortTime(refund.created_at))}</td>
+      </tr>`,
+    )
+    .join("");
+  const refundSection =
+    capturedPayment === undefined
+      ? "<p>No captured online payment to refund.</p>"
+      : `${refundRows
+          ? `<table><thead><tr><th>Refund</th><th>Status</th><th>Amount</th><th>Time</th></tr></thead>
+          <tbody>${refundRows}</tbody></table>`
+          : "<p>No refunds issued yet.</p>"
+        }${
+          canRefund && capturedPayment
+            ? `<form method="post" action="/admin/orders/${order.id}/refund">
+          <input type="hidden" name="csrf" value="${escapeHtml(owner.session.csrf)}">
+          <label>Amount in paise <input name="amount_minor" type="number" min="1" max="${capturedPayment.amount_minor - refundedTotal}" placeholder="leave blank for full refund"></label>
+          <button type="submit">Issue refund</button>
+        </form>`
+            : ""
+        }`;
   return adminPage(
     `Order ${shortReference(order.id)}`,
     `<p>Status <strong>${escapeHtml(STATUS_LABELS[order.status] ?? order.status)}</strong> ·
@@ -214,9 +269,29 @@ async function orderDetailPage(
     <h2>Payments</h2>
     <table><thead><tr><th>Provider order</th><th>Payment</th><th>Status</th><th>Amount</th><th>Note</th></tr></thead>
     <tbody>${paymentRows || '<tr><td colspan="5">No online payments recorded.</td></tr>'}</tbody></table>
+    <h2>Refunds</h2>
+    ${paymentReview}
+    ${refundSection}
     <p><a href="/admin/orders">Back to all orders</a></p>`,
     owner,
   );
+}
+
+async function handleRefund(
+  request: Request,
+  env: Env,
+  owner: AuthenticatedOwner,
+  orderId: string,
+): Promise<Response> {
+  const form = await readForm(request);
+  await requireCsrf(request, owner.session, form);
+  const raw = form.get("amount_minor");
+  const amountMinor =
+    typeof raw === "string" && raw.trim() !== "" && /^-?\d+$/.test(raw.trim())
+      ? Number.parseInt(raw.trim(), 10)
+      : null;
+  await refundOrderPayment(env.DB, env, orderId, amountMinor);
+  return redirect(`/admin/orders/${orderId}`);
 }
 
 export async function changeOrderStatus(
@@ -246,18 +321,23 @@ export async function changeOrderStatus(
     );
   }
   const at = new Date().toISOString();
+  if (next === "paid") {
+    const outcome = await settleOrderStock(db, orderId, "owner");
+    if (outcome !== "paid") {
+      throw new HttpError(
+        409,
+        "reservation_expired",
+        "The reservation is no longer available, so this order cannot be marked paid.",
+      );
+    }
+    return;
+  }
   const update = await db
     .prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
     .bind(next, at, orderId, order.status)
     .run();
   if ((update.meta.changes ?? 0) === 0) {
     throw new HttpError(409, "order_conflict", "The order changed before this update completed.");
-  }
-  if (next === "paid") {
-    await db
-      .prepare("UPDATE inventory_reservations SET state = 'consumed' WHERE order_id = ? AND state = 'active'")
-      .bind(orderId)
-      .run();
   }
   if (next === "cancelled") {
     await db
@@ -309,6 +389,10 @@ export async function routeAdminOrders(
     const statusMatch = path.match(/^\/admin\/orders\/([0-9a-f-]+)\/status$/i);
     if (request.method === "POST" && statusMatch?.[1]) {
       return handleStatusChange(request, env, owner, statusMatch[1]);
+    }
+    const refundMatch = path.match(/^\/admin\/orders\/([0-9a-f-]+)\/refund$/i);
+    if (request.method === "POST" && refundMatch?.[1]) {
+      return handleRefund(request, env, owner, refundMatch[1]);
     }
     const detailMatch = path.match(/^\/admin\/orders\/([0-9a-f-]+)$/i);
     if (request.method === "GET" && detailMatch?.[1]) {

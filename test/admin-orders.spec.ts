@@ -124,7 +124,7 @@ describe("owner order desk", () => {
     expect((await filtered.text())).not.toContain("guest@example.com");
   });
 
-  it("marks a pending order paid and consumes its reservations", async () => {
+  it("marks a pending order paid and permanently deducts its reserved stock", async () => {
     const { cookie, csrf } = await ownerSession();
     const orderId = await seedAndCheckout();
 
@@ -152,6 +152,11 @@ describe("owner order desk", () => {
       .bind(orderId)
       .first<number>("count");
     expect(consumedReservations).toBe(1);
+    expect(
+      await env.DB.prepare("SELECT quantity FROM inventory_items WHERE variant_id = ?")
+        .bind(VARIANT_A)
+        .first<number>("quantity"),
+    ).toBe(2);
   });
 
   it("queues a shipped email when an order is fulfilled", async () => {
@@ -246,5 +251,126 @@ describe("owner order desk", () => {
       cookie,
     );
     expect(repeat.status).toBe(409);
+  });
+
+  it("issues a full refund against a captured payment and flags the list", async () => {
+    const { cookie, csrf } = await ownerSession();
+    const orderId = await seedAndCheckout();
+    await request(`/admin/orders/${orderId}/status`, "POST", { csrf, status: "paid" }, cookie);
+    const now = new Date().toISOString();
+    await env.DB
+      .prepare(
+        `INSERT INTO order_payments (
+          id, order_id, provider, provider_order_id, provider_payment_id,
+          amount_minor, currency, status, created_at, updated_at
+        ) VALUES (?, ?, 'razorpay', 'order_mock_desk1', 'pay_mock_desk1', 10000, 'INR', 'captured', ?, ?)`,
+      )
+      .bind(crypto.randomUUID(), orderId, now, now)
+      .run();
+
+    const detailBefore = await request(`/admin/orders/${orderId}`, "GET", undefined, cookie);
+    expect((await detailBefore.text())).toContain("Issue refund");
+
+    const refund = await request(
+      `/admin/orders/${orderId}/refund`,
+      "POST",
+      { csrf },
+      cookie,
+    );
+    expect(refund.status).toBe(303);
+
+    const row = await env.DB
+      .prepare(
+        "SELECT amount_minor, currency, status FROM order_refunds WHERE order_id = ?",
+      )
+      .bind(orderId)
+      .first<{ amount_minor: number; currency: string; status: string }>();
+    expect(row?.amount_minor).toBe(10000);
+    expect(row?.currency).toBe("INR");
+    expect(row?.status).toBe("processed");
+
+    const detailAfter = await request(`/admin/orders/${orderId}`, "GET", undefined, cookie);
+    const detailHtml = await detailAfter.text();
+    expect(detailHtml).toContain("rfnd_mock_");
+    expect(detailHtml).not.toContain("Issue refund");
+
+    const list = await request("/admin/orders", "GET", undefined, cookie);
+    expect((await list.text())).toContain("Refunded");
+  });
+
+  it("validates partial refunds and refuses orders without captured payments", async () => {
+    const { cookie, csrf } = await ownerSession();
+    const orderId = await seedAndCheckout();
+
+    const noPayment = await request(
+      `/admin/orders/${orderId}/refund`,
+      "POST",
+      { csrf },
+      cookie,
+    );
+    expect(noPayment.status).toBe(409);
+
+    const now = new Date().toISOString();
+    await env.DB
+      .prepare(
+        `INSERT INTO order_payments (
+          id, order_id, provider, provider_order_id, provider_payment_id,
+          amount_minor, currency, status, created_at, updated_at
+        ) VALUES (?, ?, 'razorpay', 'order_mock_desk2', 'pay_mock_desk2', 10000, 'INR', 'captured', ?, ?)`,
+      )
+      .bind(crypto.randomUUID(), orderId, now, now)
+      .run();
+    const paymentId = await env.DB.prepare("SELECT id FROM order_payments WHERE order_id = ?")
+      .bind(orderId)
+      .first<string>("id");
+    await env.DB.prepare(
+      `INSERT INTO order_refunds (
+        id, order_id, payment_id, provider_refund_id, amount_minor, currency, status, created_at
+      ) VALUES (?, ?, ?, 'rfnd_failed_attempt', 9000, 'INR', 'failed', ?)`,
+    )
+      .bind(crypto.randomUUID(), orderId, paymentId, now)
+      .run();
+
+    const tooBig = await request(
+      `/admin/orders/${orderId}/refund`,
+      "POST",
+      { csrf, amount_minor: "20000" },
+      cookie,
+    );
+    expect(tooBig.status).toBe(422);
+
+    const partial = await request(
+      `/admin/orders/${orderId}/refund`,
+      "POST",
+      { csrf, amount_minor: "4000" },
+      cookie,
+    );
+    expect(partial.status).toBe(303);
+    const total = await env.DB
+      .prepare("SELECT COALESCE(SUM(amount_minor), 0) AS total FROM order_refunds WHERE order_id = ? AND status <> 'failed'")
+      .bind(orderId)
+      .first<number>("total");
+    expect(total).toBe(4000);
+  });
+
+  it("shows late captured payments as refundable manual-review cases", async () => {
+    const { cookie } = await ownerSession();
+    const orderId = await seedAndCheckout();
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE orders SET status = 'expired', updated_at = ? WHERE id = ?").bind(now, orderId),
+      env.DB.prepare("UPDATE inventory_reservations SET state = 'released' WHERE order_id = ?").bind(orderId),
+      env.DB.prepare(
+        `INSERT INTO order_payments (
+          id, order_id, provider, provider_order_id, provider_payment_id,
+          amount_minor, currency, status, created_at, updated_at
+        ) VALUES (?, ?, 'razorpay', 'order_late_desk', 'pay_late_desk', 10000, 'INR', 'captured', ?, ?)`,
+      ).bind(crypto.randomUUID(), orderId, now, now),
+    ]);
+
+    const detail = await request(`/admin/orders/${orderId}`, "GET", undefined, cookie);
+    const html = await detail.text();
+    expect(html).toContain("Payment requires review");
+    expect(html).toContain("Issue refund");
   });
 });

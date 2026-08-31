@@ -288,7 +288,7 @@ describe("maintenance sweep", () => {
     expect(order?.status).toBe("expired");
   });
 
-  it("leaves recent unpaid orders alone", async () => {
+  it("expires recent unpaid orders as soon as their reservation lapses", async () => {
     const { orderId } = await placeOrder();
     await env.DB
       .prepare("UPDATE inventory_reservations SET expires_at = ?")
@@ -296,11 +296,11 @@ describe("maintenance sweep", () => {
       .run();
 
     const summary = await runMaintenance(env);
-    expect(summary.expiredOrders).toBe(0);
+    expect(summary.expiredOrders).toBeGreaterThanOrEqual(1);
     const order = await env.DB
       .prepare("SELECT status FROM orders WHERE id = ?")
       .bind(orderId)
       .first<{ status: string }>();
-    expect(order?.status).toBe("pending");
+    expect(order?.status).toBe("expired");
   });
 });
