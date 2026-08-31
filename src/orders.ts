@@ -8,6 +8,7 @@ import {
   requireSameOrigin,
 } from "./http";
 import { razorpayConfig } from "./payments";
+import { enforceRateLimit } from "./ratelimit";
 import { enqueueOrderEmail } from "./email";
 import { verifyOrderLink } from "./links";
 import { optionalMemberEmail } from "./customers";
@@ -604,6 +605,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
 
   if (request.method === "POST" && path === "/api/cart/quote") {
     requireSameOrigin(request);
+    await enforceRateLimit(env, request, "quote");
     const body = await readJson(request);
     const items = parseCartItems((body as Record<string, unknown> | null)?.items);
     return json(await quoteCart(env.DB, items));
@@ -620,6 +622,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
 
   if (request.method === "POST" && path === "/checkout") {
     requireSameOrigin(request);
+    await enforceRateLimit(env, request, "checkout");
     const form = await readForm(request);
     try {
       const fields = parseCheckoutFields(form);
@@ -636,6 +639,7 @@ export async function routeOrders(request: Request, env: Env): Promise<Response 
 
   const orderMatch = /^\/orders\/([0-9a-f-]{36})$/i.exec(path);
   if (request.method === "GET" && orderMatch?.[1]) {
+    await enforceRateLimit(env, request, "order-view");
     const orderId = orderMatch[1];
     const tokenParam = url.searchParams.get("token");
     let authorized = tokenParam !== null;

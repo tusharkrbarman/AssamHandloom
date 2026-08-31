@@ -16,6 +16,7 @@ import {
 } from "./auth";
 import { createOrderLink } from "./links";
 import { escapeHtml, HttpError, readForm, redirect, requireSameOrigin } from "./http";
+import { enforceRateLimit } from "./ratelimit";
 
 const COOKIE_NAME = "luit_member";
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -187,6 +188,7 @@ function registerPage(message?: string): Response {
 
 async function register(request: Request, env: Env): Promise<Response> {
   requireSameOrigin(request);
+  await enforceRateLimit(env, request, "register");
   const form = await readForm(request);
   const email = normalizedEmail(formText(form, "email"));
   const password = validPassword(formText(form, "password"));
@@ -246,6 +248,7 @@ async function loginMember(
 
 async function login(request: Request, env: Env): Promise<Response> {
   requireSameOrigin(request);
+  await enforceRateLimit(env, request, "login");
   const form = await readForm(request);
   const email = normalizedEmail(formText(form, "email"));
   const password = validPassword(formText(form, "password"));

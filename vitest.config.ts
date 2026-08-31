@@ -25,6 +25,18 @@ export default defineConfig(async () => {
                 { status: 200 },
               );
             }
+            const refundMatch = url.pathname.match(/^\/v1\/payments\/([^/]+)\/refund$/);
+            if (url.hostname === "api.razorpay.com" && refundMatch) {
+              const body = (await request.json()) as { amount?: number };
+              return Response.json(
+                {
+                  id: `rfnd_mock_${refundMatch[1]}`,
+                  status: "processed",
+                  amount: body.amount ?? null,
+                },
+                { status: 200 },
+              );
+            }
             if (url.hostname === "api.resend.com" && url.pathname === "/emails") {
               const body = (await request.json()) as { to?: string[] };
               const recipient = Array.isArray(body.to) ? (body.to[0] ?? "") : "";

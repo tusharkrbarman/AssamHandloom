@@ -21,6 +21,13 @@
       "bucket_name": "luit-and-loom-media"
     }
   ],
+  "ratelimits": [
+    {
+      "name": "PUBLIC_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
   "triggers": {
     "crons": ["*/5 * * * *"]
   },

@@ -53,8 +53,8 @@ pnpm run dev
 
 Replace every value in `.dev.vars` with a different local secret of at least
 32 characters, then open the local URL shown by Wrangler. Create the owner at
-`/admin/setup`. Uncomment the Razorpay and email lines to exercise those flows
-locally.
+`/admin/setup`. The test suite exercises Razorpay and email with local provider
+stubs; use a deployed test Worker for live-provider testing.
 
 Run all Worker checks with:
 
@@ -80,8 +80,12 @@ pnpm run verify
 - A five-minute maintenance cron that releases expired reservations, expires
   abandoned pending orders, and drains the email outbox
 - Owner order desk at `/admin/orders`: review orders, customer addresses, and
-  payments; mark paid or shipped (with a shipped notification), or cancel
+  payments; mark paid or shipped (with a shipped notification), cancel, and
+  issue full or partial Razorpay refunds
 - Optional customer accounts with order history
+- Security headers on every response (CSP, nosniff, frame denial, HSTS) and
+  per-IP rate limits on checkout, quotes, payment actions, order links, and
+  account auth
 
-Not included yet: refunds, coupons, reviews, shipping or tax automation,
+Not included yet: coupons, reviews, shipping or tax automation,
 delivery status emails beyond shipping, and staff roles beyond the single owner.
