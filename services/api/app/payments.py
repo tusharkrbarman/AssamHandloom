@@ -14,6 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import ConnectionPool
 
+from .links import verify_order_link
 from .settings import Settings
 
 
@@ -32,14 +33,18 @@ class PaymentSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     order_id: str = Field(alias="orderId")
-    token: str
+    token: str | None = None
+    exp: int | None = Field(default=None, ge=0)
+    sig: str | None = Field(default=None, max_length=128)
 
 
 class PaymentVerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     order_id: str = Field(alias="orderId")
-    token: str
+    token: str | None = None
+    exp: int | None = Field(default=None, ge=0)
+    sig: str | None = Field(default=None, max_length=128)
     razorpay_order_id: str = Field(alias="razorpayOrderId")
     razorpay_payment_id: str = Field(alias="razorpayPaymentId")
     signature: str
@@ -75,6 +80,21 @@ def _provider_id(value: str, prefix: str, code: str) -> str:
     if not clean.startswith(prefix) or len(clean) > 80:
         raise _error(422, code, "The payment reference is incomplete.")
     return clean
+
+
+def _payment_access(
+    order_id: str,
+    token: str | None,
+    expires_at: int | None,
+    signature: str | None,
+    signing_secret: str | None,
+) -> tuple[str, str | None]:
+    clean_order_id = _uuid(order_id)
+    if token:
+        return clean_order_id, _uuid(token)
+    if signing_secret and verify_order_link(clean_order_id, expires_at, signature, signing_secret):
+        return clean_order_id, None
+    raise _error(404, "not_found", "That order could not be found.")
 
 
 def _hex_hmac(payload: bytes, secret: str) -> str:
@@ -173,9 +193,7 @@ def _expire_pending_order(connection, order_id: str, at: datetime) -> None:
         )
 
 
-def _load_payable_order(connection, order_id: str, token: str, lock: bool) -> dict[str, object]:
-    order_id = _uuid(order_id)
-    token = _uuid(token)
+def _load_payable_order(connection, order_id: str, token: str | None, lock: bool) -> dict[str, object]:
     lock_clause = " FOR UPDATE" if lock else ""
     now = _now()
     with connection.cursor() as cursor:
@@ -199,10 +217,10 @@ def _load_payable_order(connection, order_id: str, token: str, lock: bool) -> di
                   )
               ) THEN TRUE ELSE FALSE END AS reservations_payable
             FROM orders order_record
-            WHERE order_record.id = %s AND order_record.token = %s
+            WHERE order_record.id = %s AND (%s IS NULL OR order_record.token = %s)
             {lock_clause}
             """,
-            (now, order_id, token),
+            (now, order_id, token, token),
         )
         order = cursor.fetchone()
     if not order:
@@ -223,10 +241,12 @@ def create_payment_session(
     pool: ConnectionPool,
     payload: PaymentSessionRequest,
     config: RazorpayConfig,
+    signing_secret: str | None,
 ) -> dict[str, object]:
+    order_id, token = _payment_access(payload.order_id, payload.token, payload.exp, payload.sig, signing_secret)
     with pool.connection() as connection:
         with connection.transaction():
-            order = _load_payable_order(connection, payload.order_id, payload.token, lock=True)
+            order = _load_payable_order(connection, order_id, token, lock=True)
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -278,11 +298,9 @@ def create_payment_session(
 def _payment_for_checkout(
     connection,
     order_id: str,
-    token: str,
+    token: str | None,
     provider_order_id: str,
 ) -> dict[str, object]:
-    order_id = _uuid(order_id)
-    token = _uuid(token)
     provider_order_id = _provider_id(provider_order_id, "order_", "invalid_callback")
     with connection.cursor() as cursor:
         cursor.execute(
@@ -294,10 +312,10 @@ def _payment_for_checkout(
             JOIN orders order_record ON order_record.id = payment.order_id
             WHERE payment.provider_order_id = %s
               AND order_record.id = %s
-              AND order_record.token = %s
+              AND (%s IS NULL OR order_record.token = %s)
             LIMIT 1
             """,
-            (provider_order_id, order_id, token),
+            (provider_order_id, order_id, token, token),
         )
         payment = cursor.fetchone()
     if not payment:
@@ -431,12 +449,14 @@ def verify_payment(
     pool: ConnectionPool,
     payload: PaymentVerifyRequest,
     config: RazorpayConfig,
+    signing_secret: str | None,
 ) -> dict[str, str]:
+    order_id, token = _payment_access(payload.order_id, payload.token, payload.exp, payload.sig, signing_secret)
     with pool.connection() as connection:
         payment = _payment_for_checkout(
             connection,
-            payload.order_id,
-            payload.token,
+            order_id,
+            token,
             payload.razorpay_order_id,
         )
     expected = payment_signature(payload.razorpay_order_id.strip(), payload.razorpay_payment_id.strip(), config.key_secret)

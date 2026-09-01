@@ -31,6 +31,9 @@ services/api/.venv/Scripts/uvicorn app.main:app --app-dir services/api --reload
 
 The migration runner applies the checked-in PostgreSQL migrations in order.
 `GET /health` is the liveness probe; `GET /ready` checks database readiness.
+The application strips query strings from Uvicorn access logs. Configure the
+AWS edge, load balancer, and any upstream proxy to omit or redact query strings
+as well, because order-link credentials are carried in the URL.
 
 ## Runtime secrets
 

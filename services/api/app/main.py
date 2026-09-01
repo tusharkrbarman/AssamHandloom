@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .catalogue import CatalogueQuery, list_products
 from .dependencies import request_pool, require_same_origin
@@ -26,6 +27,32 @@ from .web import render_error, router as web_router
 
 
 LOGGER = logging.getLogger(__name__)
+
+SECURITY_HEADERS = {
+    "content-security-policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "strict-transport-security": "max-age=31536000",
+}
+
+
+class PathOnlyAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) >= 3:
+            args = list(record.args)
+            args[2] = str(args[2]).partition("?")[0]
+            record.args = tuple(args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(PathOnlyAccessFilter())
+
+
+def apply_security_headers(response: Response) -> Response:
+    response.headers.update(SECURITY_HEADERS)
+    return response
 
 
 @asynccontextmanager
@@ -55,6 +82,11 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="Luit & Loom API", version="0.1.0", lifespan=lifespan)
 JSON_ERROR_PATHS = {"/health", "/ready"}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    return apply_security_headers(await call_next(request))
 
 STATIC_DIR = Path(__file__).resolve().parents[3] / "app" / "static"
 app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
@@ -138,8 +170,8 @@ def order_read(
     return get_order(request_pool(request), order_id, token, exp, sig, settings.cookie_signing_key)
 
 
-def _payment_config_or_error():
-    config = razorpay_config(Settings.from_env())
+def _payment_config_or_error(settings: Settings | None = None):
+    config = razorpay_config(settings or Settings.from_env())
     if config is None:
         raise HTTPException(
             status_code=503,
@@ -151,15 +183,17 @@ def _payment_config_or_error():
 @app.post("/api/payments/session", tags=["payments"])
 def payment_session(payload: PaymentSessionRequest, request: Request) -> dict[str, object]:
     require_same_origin(request)
-    config = _payment_config_or_error()
-    return create_payment_session(request_pool(request), payload, config)
+    settings = Settings.from_env()
+    config = _payment_config_or_error(settings)
+    return create_payment_session(request_pool(request), payload, config, settings.cookie_signing_key)
 
 
 @app.post("/api/payments/verify", tags=["payments"])
 def payment_verify(payload: PaymentVerifyRequest, request: Request) -> dict[str, str]:
     require_same_origin(request)
-    config = _payment_config_or_error()
-    return verify_payment(request_pool(request), payload, config)
+    settings = Settings.from_env()
+    config = _payment_config_or_error(settings)
+    return verify_payment(request_pool(request), payload, config, settings.cookie_signing_key)
 
 
 @app.post("/api/webhooks/razorpay", tags=["payments"])
@@ -168,8 +202,8 @@ async def razorpay_webhook(request: Request) -> dict[str, bool]:
     return await handle_razorpay_webhook(request_pool(request), request, config)
 
 
-@app.exception_handler(HTTPException)
-def http_error(request: Request, error: HTTPException) -> Response:
+@app.exception_handler(StarletteHTTPException)
+def http_error(request: Request, error: StarletteHTTPException) -> Response:
     if request.url.path.startswith("/api/") or request.url.path in JSON_ERROR_PATHS:
         return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
     return render_error(request, error.status_code, str(error.detail), str(uuid4()))
@@ -185,8 +219,9 @@ def unhandled_error(request: Request, _error: Exception) -> Response:
     if request.url.path.startswith("/api/") or request.url.path in JSON_ERROR_PATHS:
         response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
         response.headers["x-request-id"] = request_id
-        return response
-    return render_error(request, 500, "The request could not be completed.", request_id)
+    else:
+        response = render_error(request, 500, "The request could not be completed.", request_id)
+    return apply_security_headers(response)
 
 
 app.include_router(web_router)

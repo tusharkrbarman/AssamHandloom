@@ -112,6 +112,14 @@ def test_unknown_api_path_keeps_a_json_not_found_response() -> None:
     assert response.json() == {"detail": "Not Found"}
 
 
+def test_arbitrary_missing_browser_path_renders_the_branded_not_found_page() -> None:
+    response = TestClient(app).get("/definitely-missing")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "We couldn’t find that weave" in response.text
+
+
 def test_missing_product_renders_the_branded_not_found_page(monkeypatch) -> None:
     monkeypatch.setattr("app.web.request_pool", lambda _request: object())
     monkeypatch.setattr("app.web.get_product", lambda _pool, _slug: None)
@@ -120,6 +128,56 @@ def test_missing_product_renders_the_branded_not_found_page(monkeypatch) -> None
 
     assert response.status_code == 404
     assert "We couldn’t find that weave" in response.text
+
+
+def test_search_route_uses_the_catalogue_service(monkeypatch) -> None:
+    received = {}
+    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+    monkeypatch.setattr(
+        "app.web.list_products",
+        lambda _pool, query: (received.update(query=query) or _page(PUBLISHED_PRODUCT)),
+    )
+
+    response = TestClient(app).get("/search?q=Muga")
+
+    assert response.status_code == 200
+    assert received["query"].search == "Muga"
+    assert "Search the catalogue" in response.text
+    assert "Golden Muga" in response.text
+
+
+def test_collections_route_uses_the_catalogue_service(monkeypatch) -> None:
+    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+    monkeypatch.setattr(
+        "app.web.list_collections",
+        lambda _pool: [{"id": "river", "slug": "river-edit", "title": "River Edit", "description": ""}],
+    )
+
+    response = TestClient(app).get("/collections")
+
+    assert response.status_code == 200
+    assert 'href="/collections/river-edit"' in response.text
+    assert "River Edit" in response.text
+
+
+def test_collection_route_uses_the_catalogue_services(monkeypatch) -> None:
+    received = {}
+    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+    monkeypatch.setattr(
+        "app.web.get_collection",
+        lambda _pool, slug: {"id": "river", "slug": slug, "title": "River Edit", "description": ""},
+    )
+    monkeypatch.setattr(
+        "app.web.list_products",
+        lambda _pool, query: (received.update(query=query) or _page(PUBLISHED_PRODUCT)),
+    )
+
+    response = TestClient(app).get("/collections/river-edit")
+
+    assert response.status_code == 200
+    assert received["query"].collection_slug == "river-edit"
+    assert "River Edit" in response.text
+    assert "Golden Muga" in response.text
 
 
 def test_product_page_keeps_its_css_hooks(monkeypatch) -> None:

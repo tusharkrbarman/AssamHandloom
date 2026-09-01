@@ -306,7 +306,12 @@ def test_list_products_maps_postgres_rows_to_public_api_shape() -> None:
         "pageSize": 6,
         "total": 1,
     }
+    count_sql = pool.connection_instance.cursor_instance.statements[0][0]
     list_sql = pool.connection_instance.cursor_instance.statements[1][0]
+    assert "p.publication_state = 'published'" in count_sql
+    assert "p.archived_at IS NULL" in count_sql
+    assert "p.publication_state = 'published'" in list_sql
+    assert "p.archived_at IS NULL" in list_sql
     assert "ORDER BY chosen_variant.price_minor ASC" in list_sql
 
 
