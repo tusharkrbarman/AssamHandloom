@@ -113,10 +113,6 @@ def _validate_checkout(payload: CheckoutRequest) -> tuple[list[dict[str, object]
     return items, fields
 
 
-def _money(minor: int, currency: str) -> str:
-    return format_money(minor, currency)
-
-
 def _variant_rows(connection, items: list[dict[str, object]], lock: bool) -> list[dict[str, object]]:
     ids = [str(item["variant_id"]) for item in items]
     lock_clause = " FOR UPDATE OF variant, stock" if lock else ""
@@ -184,9 +180,9 @@ def _quote_from_rows(
                 "variantTitle": row["variant_title"],
                 "quantity": quantity,
                 "unitPriceMinor": unit_price,
-                "unitPriceFormatted": _money(unit_price, row_currency),
+                "unitPriceFormatted": format_money(unit_price, row_currency),
                 "lineTotalMinor": line_total,
-                "lineTotalFormatted": _money(line_total, row_currency),
+                "lineTotalFormatted": format_money(line_total, row_currency),
                 "available": available_quantity >= quantity,
             }
         )
@@ -196,7 +192,7 @@ def _quote_from_rows(
         "currency": resolved_currency,
         "lines": lines,
         "subtotalMinor": subtotal,
-        "subtotalFormatted": _money(subtotal, resolved_currency),
+        "subtotalFormatted": format_money(subtotal, resolved_currency),
         "allAvailable": all(bool(line["available"]) for line in lines),
     }
 
@@ -323,10 +319,10 @@ def _order_response(order: dict[str, object], items: list[dict[str, object]]) ->
         "statusLabel": STATUS_LABELS.get(str(order["status"]), "Processing"),
         "currency": currency,
         "subtotalMinor": order["subtotal_minor"],
-        "subtotalFormatted": _money(int(order["subtotal_minor"]), currency),
+        "subtotalFormatted": format_money(int(order["subtotal_minor"]), currency),
         "shippingMinor": order["shipping_minor"],
         "totalMinor": order["total_minor"],
-        "totalFormatted": _money(int(order["total_minor"]), currency),
+        "totalFormatted": format_money(int(order["total_minor"]), currency),
         "shipName": order["ship_name"],
         "shipAddress1": order["ship_address1"],
         "shipAddress2": order["ship_address2"],
@@ -379,9 +375,9 @@ def get_order(
             "sku": row["sku"],
             "quantity": row["quantity"],
             "unitPriceMinor": row["unit_price_minor"],
-            "unitPriceFormatted": _money(int(row["unit_price_minor"]), str(row["currency"])),
+            "unitPriceFormatted": format_money(int(row["unit_price_minor"]), str(row["currency"])),
             "lineTotalMinor": row["line_total_minor"],
-            "lineTotalFormatted": _money(int(row["line_total_minor"]), str(row["currency"])),
+            "lineTotalFormatted": format_money(int(row["line_total_minor"]), str(row["currency"])),
         }
         for row in rows
     ]

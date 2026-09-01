@@ -3,9 +3,9 @@ from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
 
 from .catalogue import CatalogueQuery, list_products
-from .db import create_pool
 from .orders import CartQuoteRequest, CheckoutRequest, create_order, get_order, quote_cart
 from .payments import (
     PaymentSessionRequest,
@@ -21,7 +21,18 @@ from .settings import Settings
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     database_url = Settings.from_env().database_url
-    pool = create_pool(database_url) if database_url else None
+    pool = (
+        ConnectionPool(
+            conninfo=database_url,
+            min_size=1,
+            max_size=10,
+            timeout=5,
+            kwargs={"row_factory": dict_row},
+            open=False,
+        )
+        if database_url
+        else None
+    )
     application.state.db_pool = pool
     if pool:
         pool.open(wait=False)
