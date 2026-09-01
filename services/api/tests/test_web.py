@@ -54,6 +54,21 @@ def test_home_renders_hero_and_published_catalogue_items(monkeypatch) -> None:
     assert "Golden Muga" in response.text
 
 
+def test_home_keeps_the_accessibility_shell_and_expected_assets(monkeypatch) -> None:
+    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+    monkeypatch.setattr("app.web.list_products", lambda _pool, _query: _page(PUBLISHED_PRODUCT))
+
+    response = TestClient(app).get("/")
+
+    assert response.status_code == 200
+    assert response.text.count('<main id="main-content" tabindex="-1">') == 1
+    assert response.text.count('<a class="skip-link" href="#main-content">Skip to main content</a>') == 1
+    assert response.text.count('<nav class="primary-nav" aria-label="Primary navigation">') == 1
+    assert response.text.count('href="/css/site.css"') == 1
+    assert response.text.count('src="/js/bag.js"') == 1
+    assert response.text.count("<script") == 1
+
+
 def test_shop_excludes_draft_items_from_the_catalogue(monkeypatch) -> None:
     draft = {
         **PUBLISHED_PRODUCT,
@@ -107,6 +122,18 @@ def test_missing_product_renders_the_branded_not_found_page(monkeypatch) -> None
     assert "We couldn’t find that weave" in response.text
 
 
+def test_product_page_keeps_its_css_hooks(monkeypatch) -> None:
+    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+    monkeypatch.setattr("app.web.get_product", lambda _pool, _slug: {**PUBLISHED_PRODUCT, "media": [], "variants": []})
+    monkeypatch.setattr("app.web.list_products", lambda _pool, _query: _page(PUBLISHED_PRODUCT))
+
+    response = TestClient(app).get("/products/golden-muga")
+
+    assert response.status_code == 200
+    assert 'class="product-detail"' in response.text
+    assert 'class="product-detail__layout"' in response.text
+
+
 def test_editorial_page_preserves_our_story_copy() -> None:
     response = TestClient(app).get("/our-story")
 
@@ -125,6 +152,7 @@ def test_cart_page_keeps_bag_script() -> None:
     response = TestClient(app).get("/cart")
 
     assert response.status_code == 200
+    assert 'class="commerce-page"' in response.text
     assert 'id="cart-root"' in response.text
     assert 'src="/js/bag.js"' in response.text
 
@@ -146,6 +174,16 @@ def test_checkout_re_renders_safe_fields_after_invalid_items() -> None:
     assert "The bag could not be read." in response.text
     assert 'value="weaver@example.com"' in response.text
     assert 'value="Ada Weaver"' in response.text
+
+
+def test_checkout_page_keeps_its_css_hooks() -> None:
+    response = TestClient(app).get("/checkout")
+
+    assert response.status_code == 200
+    assert 'class="commerce-page"' in response.text
+    assert 'class="checkout-form"' in response.text
+    assert 'class="checkout-grid"' in response.text
+    assert 'class="checkout-summary"' in response.text
 
 
 def test_checkout_redirects_after_creating_an_order(monkeypatch) -> None:
@@ -254,3 +292,13 @@ def test_pending_order_shows_payment_controls_only_with_all_credentials(monkeypa
     assert 'src="/js/pay.js"' in enabled.text
     assert 'id="pay-now"' not in non_pending.text
     assert 'src="/js/pay.js"' not in non_pending.text
+
+
+def test_order_page_keeps_its_css_hooks(monkeypatch) -> None:
+    monkeypatch.setattr("app.web.get_order", lambda *_args: {"order": _order()})
+
+    response = TestClient(app).get("/orders/11111111-1111-1111-1111-111111111111?token=private-token")
+
+    assert response.status_code == 200
+    assert 'class="commerce-page order-confirmation"' in response.text
+    assert 'class="bag-table"' in response.text

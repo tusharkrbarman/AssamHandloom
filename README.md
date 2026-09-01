@@ -2,18 +2,19 @@
 
 An Assamese silk saree store being migrated to an AWS-hosted Python stack.
 This branch contains the FastAPI commerce API, PostgreSQL schema, guest
-checkout, inventory reservations, passwordless order links, and Razorpay
-payment settlement.
+checkout, inventory reservations, passwordless order links, Razorpay
+payment settlement, and the public storefront.
 
 ## Current AWS architecture
 
-- FastAPI service in [`services/api`](services/api/README.md)
+- FastAPI service in [`services/api`](services/api/README.md) serving the public storefront
 - PostgreSQL for catalogue, orders, payments, and inventory
 - Razorpay for payment sessions, callback verification, and webhooks
 - Signed order links for passwordless guest access
+- Legacy Worker retained only as rollback code
 
-The browser storefront, Docker image, ECS service, and production AWS
-resources are still being migrated.
+The Docker image, ECS service, and production AWS resources are still being
+migrated.
 
 ## Run the API locally
 
@@ -69,12 +70,12 @@ Implemented:
 - Guest checkout with server-side prices and stock locking
 - Idempotent Razorpay capture handling and inventory deduction
 - Signed, expiring passwordless order links
+- Public storefront cutover to FastAPI
 - GitHub CI checks for the API
 
 Still pending:
 
 - PostgreSQL catalogue seed/import
-- Frontend cutover to the FastAPI API
 - Docker image and ECS deployment
 - AWS networking, secrets, object storage, and observability
 - Admin order management, email delivery, refunds, shipping, and tax rules
