@@ -1,9 +1,12 @@
+from json import JSONDecodeError, loads
 from pathlib import Path
 from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import ValidationError
 from fastapi.responses import Response
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .catalogue import (
@@ -16,6 +19,11 @@ from .catalogue import (
     list_products,
 )
 from .dependencies import request_pool
+from .dependencies import require_same_origin
+from .links import verify_order_link
+from .orders import CheckoutRequest, create_order, get_order
+from .payments import razorpay_config
+from .settings import Settings
 
 
 TEMPLATES = Jinja2Templates(
@@ -105,6 +113,41 @@ def page_href(request: Request, page: int) -> str:
 TEMPLATES.env.globals["page_href"] = page_href
 
 
+def checkout_fields(form) -> dict[str, str]:
+    return {
+        field: value
+        for field in ("email", "name", "phone", "address1", "address2", "city", "state", "postal_code", "country")
+        if isinstance(value := form.get(field), str)
+    }
+
+
+def checkout_error_message(error: HTTPException) -> str:
+    if isinstance(error.detail, dict) and isinstance(error.detail.get("message"), str):
+        return error.detail["message"]
+    return "Please check the checkout details and try again."
+
+
+async def checkout_payload(request: Request) -> CheckoutRequest:
+    form = await request.form()
+    try:
+        items = loads(str(form.get("items", "")))
+    except (JSONDecodeError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_cart", "message": "The bag could not be read."},
+        ) from None
+    body = {**checkout_fields(form), "items": items}
+    if "postal_code" in body:
+        body["postalCode"] = body.pop("postal_code")
+    try:
+        return CheckoutRequest.model_validate(body)
+    except ValidationError:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_checkout_field", "message": "Please check the checkout details and try again."},
+        ) from None
+
+
 @router.get("/")
 def home(request: Request) -> Response:
     page = list_products(request_pool(request), CatalogueQuery(page_size=4))
@@ -159,6 +202,78 @@ def product_page(slug: str, request: Request) -> Response:
         request,
         "product.html",
         {"product": product, "related": related, "title": f"{product['title']} · Luit & Loom"},
+    )
+
+
+@router.get("/cart")
+def cart_page(request: Request) -> Response:
+    return render_page(request, "commerce.html", {"kind": "cart", "title": "Your bag · Luit & Loom"})
+
+
+@router.get("/checkout")
+def checkout_page(request: Request) -> Response:
+    payments_enabled = razorpay_config(Settings.from_env()) is not None
+    return render_page(
+        request,
+        "commerce.html",
+        {"kind": "checkout", "payments_enabled": payments_enabled, "title": "Checkout · Luit & Loom"},
+    )
+
+
+@router.post("/checkout")
+async def checkout_submit(request: Request) -> Response:
+    require_same_origin(request)
+    payments_enabled = razorpay_config(Settings.from_env()) is not None
+    try:
+        payload = await checkout_payload(request)
+        result = create_order(request_pool(request), payload, Settings.from_env().cookie_signing_key)
+    except HTTPException as error:
+        return render_page(
+            request,
+            "commerce.html",
+            {
+                "kind": "checkout",
+                "fields": checkout_fields(await request.form()),
+                "message": checkout_error_message(error),
+                "payments_enabled": payments_enabled,
+                "title": "Checkout · Luit & Loom",
+            },
+            error.status_code,
+        )
+    return RedirectResponse(f"/orders/{result['orderId']}?token={result['token']}", status_code=303)
+
+
+@router.get("/orders/{order_id}")
+def order_page(order_id: str, request: Request) -> Response:
+    settings = Settings.from_env()
+    query = request.query_params
+    if not query.get("token") and not (
+        settings.cookie_signing_key
+        and verify_order_link(
+            order_id,
+            int(query["exp"]) if query.get("exp", "").isdigit() else None,
+            query.get("sig"),
+            settings.cookie_signing_key,
+        )
+    ):
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "That order could not be found."})
+    order = get_order(
+        request_pool(request),
+        order_id,
+        query.get("token"),
+        int(query["exp"]) if query.get("exp", "").isdigit() else None,
+        query.get("sig"),
+        settings.cookie_signing_key,
+    )
+    return render_page(
+        request,
+        "commerce.html",
+        {
+            "kind": "order",
+            "order": order["order"],
+            "payments_enabled": razorpay_config(settings) is not None,
+            "title": f"Order {order_id[:8].upper()} · Luit & Loom",
+        },
     )
 
 

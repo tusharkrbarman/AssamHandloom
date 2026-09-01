@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+{% if kind == "cart" %}
+<section class="commerce-page">
+  <p class="eyebrow">Your bag</p>
+  <h1>Review your weaves</h1>
+  <div id="cart-root"><p class="empty-state">Opening your bag…</p></div>
+  <noscript><p class="empty-state">Please enable JavaScript to use the bag, or browse the <a href="/shop">catalogue</a>.</p></noscript>
+</section>
+{% elif kind == "checkout" %}
+<section class="commerce-page">
+  <p class="eyebrow">Checkout preview</p>
+  <h1>Complete your order</h1>
+  {% if message %}<p class="form-alert" role="alert">{{ message }}</p>{% endif %}
+  <form class="checkout-form" method="post" action="/checkout">
+    <input type="hidden" name="items" id="checkout-items" value="">
+    <div class="checkout-grid">
+      <fieldset>
+        <legend>Contact</legend>
+        <label>Email<input name="email" type="email" autocomplete="email" required value="{{ fields.email if fields else '' }}"></label>
+        <label>Full name<input name="name" autocomplete="name" required value="{{ fields.name if fields else '' }}"></label>
+        <label>Phone<input name="phone" type="tel" autocomplete="tel" required value="{{ fields.phone if fields else '' }}"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Shipping address</legend>
+        <label>Address line 1<input name="address1" autocomplete="address-line1" required value="{{ fields.address1 if fields else '' }}"></label>
+        <label>Address line 2 (optional)<input name="address2" autocomplete="address-line2" value="{{ fields.address2 if fields else '' }}"></label>
+        <label>City<input name="city" autocomplete="address-level2" required value="{{ fields.city if fields else '' }}"></label>
+        <label>State<input name="state" autocomplete="address-level1" required value="{{ fields.state if fields else '' }}"></label>
+        <label>Postal code<input name="postal_code" autocomplete="postal-code" required value="{{ fields.postal_code if fields else '' }}"></label>
+        <label>Country<select name="country" autocomplete="country"><option value="IN"{% if not fields or fields.country|default('IN') == 'IN' %} selected{% endif %}>India</option></select></label>
+      </fieldset>
+      <aside class="checkout-summary">
+        <h2>Order summary</h2>
+        <div id="checkout-summary"><p class="empty-state">Reviewing your bag…</p></div>
+      </aside>
+    </div>
+    <p class="order-note">Your weaves are held for 30 minutes once you place the order. {% if payments_enabled %}You can pay securely as soon as your order is placed.{% else %}Online payments are not active yet — placing the order reserves stock and costs nothing.{% endif %}</p>
+    <button class="button" type="submit">Place order</button>
+  </form>
+  <noscript><p class="empty-state">This checkout needs JavaScript to attach your bag.</p></noscript>
+</section>
+{% else %}
+<section class="commerce-page order-confirmation">
+  <p class="eyebrow">Order received</p>
+  <h1>Thank you — your weaves are reserved.</h1>
+  <p>Reference <strong>{{ order.id[:8].upper() }}</strong> · Status: <strong>{{ order.statusLabel }}</strong> · Placed {{ order.createdAt[:10] }}</p>
+  <table class="bag-table">
+    <thead><tr><th scope="col">Item</th><th scope="col">Qty</th><th scope="col">Each</th><th scope="col">Total</th></tr></thead>
+    <tbody>{% for item in order["items"] %}<tr><td>{{ item.productTitle }} · {{ item.variantTitle }}<br><small>{{ item.sku }}</small></td><td>{{ item.quantity }}</td><td>{{ item.unitPriceFormatted }}</td><td>{{ item.lineTotalFormatted }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <dl class="summary-totals">
+    <div><dt>Subtotal</dt><dd>{{ order.subtotalFormatted }}</dd></div>
+    <div><dt>Shipping</dt><dd>{% if order.shippingMinor == 0 %}Free{% else %}{{ format_money(order.shippingMinor, order.currency) }}{% endif %}</dd></div>
+    <div><dt>Total</dt><dd>{{ order.totalFormatted }}</dd></div>
+  </dl>
+  <section aria-labelledby="ship-to-title"><h2 id="ship-to-title">Delivering to</h2><p>{{ order.shipName }}<br>{{ order.shipAddress1 }}{% if order.shipAddress2 %}<br>{{ order.shipAddress2 }}{% endif %}<br>{{ order.shipCity }}, {{ order.shipState }} {{ order.shipPostalCode }}<br>{{ order.shipCountry }}</p></section>
+  {% if payments_enabled and order.status == "pending" %}
+  <section class="pay-section" aria-labelledby="pay-title"><h2 id="pay-title">Complete payment</h2><p class="order-note">Your weaves stay reserved for 30 minutes. Finish payment to confirm this order.</p><button class="button" type="button" id="pay-now" data-order-id="{{ order.id }}">Pay now</button><p class="form-alert" id="pay-error" role="alert" hidden></p></section>
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/js/pay.js" defer></script>
+  {% else %}
+  <p class="order-note">Online payments open with our next release. We will email a secure payment link to complete this order before the reservation window closes.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
