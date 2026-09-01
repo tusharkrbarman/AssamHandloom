@@ -40,6 +40,44 @@ all older owner sessions.
 The production catalogue starts empty. The bundled River, Reed & Gold records
 belong only to the older preview and are not loaded into D1.
 
+## AWS branch (in progress)
+
+The `AWS` branch contains the Python/FastAPI migration path for running the
+commerce API with PostgreSQL. The Cloudflare Worker remains the current
+storefront while the migration is completed.
+
+The API lives in [`services/api`](services/api/README.md) and currently
+provides:
+
+- PostgreSQL health/readiness checks and catalogue search
+- Guest cart quotes and 30-minute inventory reservations
+- Passwordless signed order links
+- Razorpay payment sessions, callback verification, and webhook settlement
+
+### Run the AWS API locally
+
+You need Python 3.12 and a reachable PostgreSQL database:
+
+```powershell
+python -m venv services/api/.venv
+services/api/.venv/Scripts/python.exe -m pip install -e "services/api[test]"
+$env:DATABASE_URL = "postgresql://localhost/luit_and_loom"
+$env:COOKIE_SIGNING_KEY = "replace-with-a-random-value-at-least-32-characters"
+services/api/.venv/Scripts/python.exe -m app.migrate
+services/api/.venv/Scripts/uvicorn app.main:app --app-dir services/api --reload
+```
+
+For live Razorpay checkout, also set `RAZORPAY_KEY_ID`,
+`RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` as runtime secrets. Run
+the API checks with:
+
+```powershell
+services/api/.venv/Scripts/python.exe -m pytest services/api/tests -q
+```
+
+Docker/ECS infrastructure, PostgreSQL catalogue seeding, and the frontend
+cutover are intentionally still pending on this branch.
+
 ## Run the Cloudflare store locally
 
 You need Node.js 24 and pnpm 11.
