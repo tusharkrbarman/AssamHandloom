@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Mapping
 
 from fastapi import HTTPException
 from psycopg_pool import ConnectionPool
@@ -45,6 +46,44 @@ def _normalise(value: str | None) -> str | None:
 
 def _like(value: str) -> str:
     return "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _normalise_optional(value: str | None, *, limit: int | None = None) -> str | None:
+    clean = _normalise(value)
+    if clean is None or limit is None:
+        return clean
+    return clean[:limit]
+
+
+def _int_param(value: str | None, *, default: int, minimum: int = 1, maximum: int | None = None) -> int:
+    try:
+        parsed = int((value or "").strip() or default)
+    except ValueError:
+        return default
+    if parsed < minimum:
+        return default
+    if maximum is not None and parsed > maximum:
+        return maximum
+    return parsed
+
+
+def catalogue_query_from_params(
+    params: Mapping[str, str], collection_slug: str | None = None
+) -> CatalogueQuery:
+    sort = _normalise(params.get("sort")) or "featured"
+    if sort not in SORT_SQL:
+        sort = "featured"
+    return CatalogueQuery(
+        search=_normalise(params.get("search") or params.get("q")),
+        silk_type=_normalise_optional(params.get("silk_type"), limit=80),
+        colour=_normalise_optional(params.get("colour"), limit=80),
+        occasion=_normalise_optional(params.get("occasion"), limit=80),
+        available_only=(params.get("available_only") or "").strip().lower() in {"1", "true", "yes", "on"},
+        sort=sort,
+        page=_int_param(params.get("page"), default=1),
+        page_size=_int_param(params.get("page_size"), default=12, maximum=24),
+        collection_slug=_normalise_optional(collection_slug or params.get("collection_slug"), limit=80),
+    )
 
 
 def _filters(query: CatalogueQuery) -> tuple[str, list[object]]:
@@ -106,6 +145,109 @@ def _row_to_product(row: dict[str, object]) -> dict[str, object]:
         "available": bool(row["available"]),
         "mediaId": row["media_id"],
         "altText": row["alt_text"],
+    }
+
+
+def _row_to_collection(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "title": row["title"],
+        "description": row["description"],
+    }
+
+
+def _row_to_variant(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "sku": row["sku"],
+        "title": row["title"],
+        "priceMinor": row["price_minor"],
+        "currency": row["currency"],
+        "available": int(row["quantity"]) > 0,
+    }
+
+
+def _row_to_media(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "url": "",
+        "altText": row["alt_text"],
+        "contentType": row["content_type"],
+    }
+
+
+def list_collections(pool: ConnectionPool) -> list[dict[str, object]]:
+    sql = """
+        SELECT id, slug, title, description
+        FROM collections
+        WHERE publication_state = 'published'
+        ORDER BY display_order ASC, id ASC
+    """
+    with pool.connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [])
+            return [_row_to_collection(row) for row in cursor.fetchall()]
+
+
+def get_collection(pool: ConnectionPool, slug: str) -> dict[str, object] | None:
+    sql = """
+        SELECT id, slug, title, description
+        FROM collections
+        WHERE publication_state = 'published' AND slug = %s
+        ORDER BY display_order ASC, id ASC
+        LIMIT 1
+    """
+    with pool.connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [_normalise(slug)])
+            row = cursor.fetchone()
+    return _row_to_collection(row) if row else None
+
+
+def get_product(pool: ConnectionPool, slug: str) -> dict[str, object] | None:
+    product_sql = """
+        SELECT id, slug, title, description, silk_type, colour, occasion
+        FROM products
+        WHERE publication_state = 'published' AND archived_at IS NULL AND slug = %s
+        LIMIT 1
+    """
+    variants_sql = """
+        SELECT v.id, v.sku, v.title, v.price_minor, v.currency,
+               v.publication_state, stock.quantity
+        FROM variants v
+        JOIN inventory_items stock ON stock.variant_id = v.id
+        WHERE v.product_id = %s AND v.publication_state = 'published'
+        ORDER BY v.price_minor ASC, v.id ASC
+    """
+    media_sql = """
+        SELECT id, object_key, alt_text, content_type
+        FROM product_media
+        WHERE product_id = %s
+        ORDER BY display_order ASC, id ASC
+    """
+    with pool.connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(product_sql, [_normalise(slug)])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cursor.execute(variants_sql, [row["id"]])
+            variant_rows = cursor.fetchall()
+            cursor.execute(media_sql, [row["id"]])
+            media_rows = cursor.fetchall()
+    variants = [_row_to_variant(variant_row) for variant_row in variant_rows]
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "title": row["title"],
+        "description": row["description"],
+        "silkType": row["silk_type"],
+        "colour": row["colour"],
+        "occasion": row["occasion"],
+        "available": any(bool(variant["available"]) for variant in variants),
+        "variants": variants,
+        "media": [_row_to_media(media_row) for media_row in media_rows],
     }
 
 
