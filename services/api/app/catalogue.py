@@ -70,11 +70,14 @@ def _int_param(value: str | None, *, default: int, minimum: int = 1, maximum: in
 def catalogue_query_from_params(
     params: Mapping[str, str], collection_slug: str | None = None
 ) -> CatalogueQuery:
+    search = _normalise(params.get("search"))
+    if search is None:
+        search = _normalise(params.get("q"))
     sort = _normalise(params.get("sort")) or "featured"
     if sort not in SORT_SQL:
         sort = "featured"
     return CatalogueQuery(
-        search=_normalise(params.get("search") or params.get("q")),
+        search=search,
         silk_type=_normalise_optional(params.get("silk_type"), limit=80),
         colour=_normalise_optional(params.get("colour"), limit=80),
         occasion=_normalise_optional(params.get("occasion"), limit=80),

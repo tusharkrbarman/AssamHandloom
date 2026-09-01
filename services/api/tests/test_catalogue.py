@@ -85,6 +85,12 @@ def test_html_query_defaults_invalid_sort_and_caps_page_size() -> None:
     assert query.page_size == 24
 
 
+def test_html_query_uses_q_when_search_is_blank() -> None:
+    query = catalogue_query_from_params({"search": "   ", "q": " Pat "})
+
+    assert query.search == "Pat"
+
+
 def test_html_query_parses_aliases_and_truthy_available_only() -> None:
     query = catalogue_query_from_params(
         {
