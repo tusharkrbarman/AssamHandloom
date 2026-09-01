@@ -10,9 +10,9 @@
   {% set page_count = (page.total + page.pageSize - 1) // page.pageSize %}
   {% if include_pagination and page_count > 1 %}
   <nav class="pagination" aria-label="Catalogue pages">
-    {% if page.page > 1 %}<a href="{{ request.url.path }}?{{ request.query_params | replace('page=' ~ request.query_params.get('page', ''), 'page=' ~ (page.page - 1)) }}" rel="prev">Previous</a>{% endif %}
+    {% if page.page > 1 %}<a href="{{ page_href(request, page.page - 1) }}" rel="prev">Previous</a>{% endif %}
     <span>Page {{ page.page }} of {{ page_count }}</span>
-    {% if page.page < page_count %}<a href="{{ request.url.path }}?page={{ page.page + 1 }}" rel="next">Next</a>{% endif %}
+    {% if page.page < page_count %}<a href="{{ page_href(request, page.page + 1) }}" rel="next">Next</a>{% endif %}
   </nav>
   {% endif %}
 </section>

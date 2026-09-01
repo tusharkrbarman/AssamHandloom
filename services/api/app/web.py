@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -91,6 +92,19 @@ def render_error(
     return response
 
 
+def page_href(request: Request, page: int) -> str:
+    params = [
+        (key, str(page) if key == "page" else value)
+        for key, value in request.query_params.multi_items()
+    ]
+    if not any(key == "page" for key, _value in params):
+        params.append(("page", str(page)))
+    return f"{request.url.path}?{urlencode(params)}"
+
+
+TEMPLATES.env.globals["page_href"] = page_href
+
+
 @router.get("/")
 def home(request: Request) -> Response:
     page = list_products(request_pool(request), CatalogueQuery(page_size=4))
@@ -148,9 +162,21 @@ def product_page(slug: str, request: Request) -> Response:
     )
 
 
-@router.get("/{editorial_path:path}")
-def editorial_page(editorial_path: str, request: Request) -> Response:
-    page = EDITORIAL_PAGES.get("/" + editorial_path)
+@router.get("/artisans")
+@router.get("/our-story")
+@router.get("/journal")
+def editorial_page(request: Request) -> Response:
+    page = EDITORIAL_PAGES[request.url.path]
+    return render_page(
+        request,
+        "editorial.html",
+        {"page": page, "title": f"{page['title']} · Luit & Loom"},
+    )
+
+
+@router.get("/pages/{editorial_path}")
+def editorial_detail(editorial_path: str, request: Request) -> Response:
+    page = EDITORIAL_PAGES.get(f"/pages/{editorial_path}")
     if page is None:
         return render_error(request, 404, "The requested page was not found.", str(uuid4()))
     return render_page(
