@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 
 from .catalogue import CatalogueQuery, list_products
+from .dependencies import request_pool, require_same_origin
 from .orders import CartQuoteRequest, CheckoutRequest, create_order, get_order, quote_cart
 from .payments import (
     PaymentSessionRequest,
@@ -45,24 +48,9 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="Luit & Loom API", version="0.1.0", lifespan=lifespan)
 
-
-def _pool(request: Request) -> ConnectionPool:
-    pool = getattr(request.app.state, "db_pool", None)
-    if pool is None:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "unavailable", "database": "not_configured"},
-        )
-    return pool
-
-
-def _require_same_origin(request: Request) -> None:
-    origin = request.headers.get("origin")
-    if not origin or origin != str(request.base_url).rstrip("/"):
-        raise HTTPException(
-            status_code=403,
-            detail={"code": "invalid_origin", "message": "The request origin is not allowed."},
-        )
+STATIC_DIR = Path(__file__).resolve().parents[3] / "app" / "static"
+app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
+app.mount("/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
 
 
 @app.get("/health", tags=["system"])
@@ -74,7 +62,7 @@ def health() -> dict[str, str]:
 @app.get("/ready", tags=["system"])
 def ready(request: Request) -> dict[str, str]:
     """Readiness probe: the service can reach its PostgreSQL database."""
-    pool = _pool(request)
+    pool = request_pool(request)
     try:
         with pool.connection() as connection:
             with connection.cursor() as cursor:
@@ -114,20 +102,20 @@ def catalogue_products(
         page_size=page_size,
         collection_slug=collection_slug,
     )
-    return list_products(_pool(request), query)
+    return list_products(request_pool(request), query)
 
 
 @app.post("/api/cart/quote", tags=["commerce"])
 def cart_quote(payload: CartQuoteRequest, request: Request) -> dict[str, object]:
-    _require_same_origin(request)
-    return quote_cart(_pool(request), payload.items)
+    require_same_origin(request)
+    return quote_cart(request_pool(request), payload.items)
 
 
 @app.post("/api/orders", status_code=201, tags=["commerce"])
 def order_create(payload: CheckoutRequest, request: Request) -> dict[str, object]:
-    _require_same_origin(request)
+    require_same_origin(request)
     settings = Settings.from_env()
-    return create_order(_pool(request), payload, settings.cookie_signing_key)
+    return create_order(request_pool(request), payload, settings.cookie_signing_key)
 
 
 @app.get("/api/orders/{order_id}", tags=["commerce"])
@@ -139,7 +127,7 @@ def order_read(
     sig: Annotated[str | None, Query(max_length=128)] = None,
 ) -> dict[str, object]:
     settings = Settings.from_env()
-    return get_order(_pool(request), order_id, token, exp, sig, settings.cookie_signing_key)
+    return get_order(request_pool(request), order_id, token, exp, sig, settings.cookie_signing_key)
 
 
 def _payment_config_or_error():
@@ -154,19 +142,19 @@ def _payment_config_or_error():
 
 @app.post("/api/payments/session", tags=["payments"])
 def payment_session(payload: PaymentSessionRequest, request: Request) -> dict[str, object]:
-    _require_same_origin(request)
+    require_same_origin(request)
     config = _payment_config_or_error()
-    return create_payment_session(_pool(request), payload, config)
+    return create_payment_session(request_pool(request), payload, config)
 
 
 @app.post("/api/payments/verify", tags=["payments"])
 def payment_verify(payload: PaymentVerifyRequest, request: Request) -> dict[str, str]:
-    _require_same_origin(request)
+    require_same_origin(request)
     config = _payment_config_or_error()
-    return verify_payment(_pool(request), payload, config)
+    return verify_payment(request_pool(request), payload, config)
 
 
 @app.post("/api/webhooks/razorpay", tags=["payments"])
 async def razorpay_webhook(request: Request) -> dict[str, bool]:
     config = _payment_config_or_error()
-    return await handle_razorpay_webhook(_pool(request), request, config)
+    return await handle_razorpay_webhook(request_pool(request), request, config)
