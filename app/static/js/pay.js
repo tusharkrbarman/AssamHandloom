@@ -53,7 +53,7 @@
           return readError(verified);
         }
         window.location.replace(
-          "/orders/" + orderId + "?token=" + encodeURIComponent(currentToken()),
+          "/orders/" + encodeURIComponent(orderId) + "?token=" + encodeURIComponent(currentToken()),
         );
       })
       .catch(function (error) {
