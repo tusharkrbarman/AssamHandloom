@@ -336,7 +336,7 @@ def _order_response(order: dict[str, object], items: list[dict[str, object]]) ->
 
 
 def get_order(
-    pool: ConnectionPool,
+    pool: ConnectionPool | None,
     order_id: str,
     token: str | None,
     expires_at: int | None,
@@ -350,6 +350,11 @@ def get_order(
         authorized = verify_order_link(order_id, expires_at, signature, signing_secret)
     if not authorized:
         raise _error(404, "not_found", "That order could not be found.")
+    if pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unavailable", "database": "not_configured"},
+        )
     with pool.connection() as connection:
         with connection.cursor() as cursor:
             if token:

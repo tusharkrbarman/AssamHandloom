@@ -20,7 +20,6 @@ from .catalogue import (
 )
 from .dependencies import request_pool
 from .dependencies import require_same_origin
-from .links import verify_order_link
 from .orders import CheckoutRequest, create_order, get_order
 from .payments import razorpay_config
 from .settings import Settings
@@ -148,6 +147,12 @@ async def checkout_payload(request: Request) -> CheckoutRequest:
         ) from None
 
 
+def order_expiry(value: str | None) -> int | None:
+    if not value or len(value) > 20 or not value.isascii() or not value.isdecimal():
+        return None
+    return int(value)
+
+
 @router.get("/")
 def home(request: Request) -> Response:
     page = list_products(request_pool(request), CatalogueQuery(page_size=4))
@@ -247,21 +252,12 @@ async def checkout_submit(request: Request) -> Response:
 def order_page(order_id: str, request: Request) -> Response:
     settings = Settings.from_env()
     query = request.query_params
-    if not query.get("token") and not (
-        settings.cookie_signing_key
-        and verify_order_link(
-            order_id,
-            int(query["exp"]) if query.get("exp", "").isdigit() else None,
-            query.get("sig"),
-            settings.cookie_signing_key,
-        )
-    ):
-        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "That order could not be found."})
+    expires_at = order_expiry(query.get("exp"))
     order = get_order(
-        request_pool(request),
+        getattr(request.app.state, "db_pool", None),
         order_id,
         query.get("token"),
-        int(query["exp"]) if query.get("exp", "").isdigit() else None,
+        expires_at,
         query.get("sig"),
         settings.cookie_signing_key,
     )

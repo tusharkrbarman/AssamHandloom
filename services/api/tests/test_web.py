@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.links import create_order_link
 from app.main import app
 
 
@@ -20,6 +21,26 @@ PUBLISHED_PRODUCT = {
 
 def _page(*items: dict[str, object]) -> dict[str, object]:
     return {"items": list(items), "page": 1, "pageSize": 12, "total": len(items)}
+
+
+def _order(status: str = "pending") -> dict[str, object]:
+    return {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "status": status,
+        "statusLabel": "Awaiting payment",
+        "subtotalFormatted": "₹2,500.00",
+        "shippingMinor": 0,
+        "totalFormatted": "₹2,500.00",
+        "shipName": "Ada Weaver",
+        "shipAddress1": "1 Loom Lane",
+        "shipAddress2": None,
+        "shipCity": "Guwahati",
+        "shipState": "Assam",
+        "shipPostalCode": "781001",
+        "shipCountry": "IN",
+        "createdAt": "2026-09-01T00:00:00+00:00",
+        "items": [],
+    }
 
 
 def test_home_renders_hero_and_published_catalogue_items(monkeypatch) -> None:
@@ -161,29 +182,61 @@ def test_invalid_order_link_is_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_pending_order_shows_payment_controls_only_with_all_credentials(monkeypatch) -> None:
-    monkeypatch.setattr("app.web.request_pool", lambda _request: object())
+def test_order_page_forwards_a_valid_signed_link_to_get_order(monkeypatch) -> None:
+    order = _order()
+    secret = "s" * 32
+    link = create_order_link(str(order["id"]), secret)
+    expiry, signature = link.split("?", 1)[1].replace("exp=", "").split("&sig=")
+    received: dict[str, object] = {}
+    pool = object()
+    monkeypatch.setenv("COOKIE_SIGNING_KEY", secret)
+    monkeypatch.setattr(app.state, "db_pool", pool, raising=False)
+    monkeypatch.setattr("app.web.verify_order_link", lambda *_args: (_ for _ in ()).throw(AssertionError()), raising=False)
+
+    def fake_get_order(pool, order_id, token, expires_at, sig, signing_secret):
+        received.update(
+            pool=pool,
+            order_id=order_id,
+            token=token,
+            expires_at=expires_at,
+            signature=sig,
+            signing_secret=signing_secret,
+        )
+        return {"order": order}
+
+    monkeypatch.setattr("app.web.get_order", fake_get_order)
+
+    response = TestClient(app).get(f"/orders/{link}")
+
+    assert response.status_code == 200
+    assert received["pool"] is pool
+    assert received["order_id"] == order["id"]
+    assert received["token"] is None
+    assert received["expires_at"] == int(expiry)
+    assert received["signature"] == signature
+    assert received["signing_secret"] == secret
+
+
+def test_order_page_passes_an_oversized_expiry_as_none(monkeypatch) -> None:
+    received: dict[str, object] = {}
     monkeypatch.setattr(
         "app.web.get_order",
-        lambda *_args: {
-            "order": {
-                "id": "11111111-1111-1111-1111-111111111111",
-                "status": "pending",
-                "statusLabel": "Awaiting payment",
-                "subtotalFormatted": "₹2,500.00",
-                "shippingMinor": 0,
-                "totalFormatted": "₹2,500.00",
-                "shipName": "Ada Weaver",
-                "shipAddress1": "1 Loom Lane",
-                "shipAddress2": None,
-                "shipCity": "Guwahati",
-                "shipState": "Assam",
-                "shipPostalCode": "781001",
-                "shipCountry": "IN",
-                "createdAt": "2026-09-01T00:00:00+00:00",
-                "items": [],
-            }
-        },
+        lambda _pool, *_args: (received.update(expires_at=_args[2]) or {"order": _order()}),
+    )
+
+    response = TestClient(app).get(
+        "/orders/11111111-1111-1111-1111-111111111111?token=private-token&exp=" + "9" * 5000
+    )
+
+    assert response.status_code == 200
+    assert received["expires_at"] is None
+
+
+def test_pending_order_shows_payment_controls_only_with_all_credentials(monkeypatch) -> None:
+    order = _order()
+    monkeypatch.setattr(
+        "app.web.get_order",
+        lambda *_args: {"order": order},
     )
     client = TestClient(app)
 
@@ -193,7 +246,11 @@ def test_pending_order_shows_payment_controls_only_with_all_credentials(monkeypa
     monkeypatch.setenv("RAZORPAY_KEY_SECRET", "secret")
     monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", "webhook")
     enabled = client.get("/orders/11111111-1111-1111-1111-111111111111?token=private-token")
+    order["status"] = "paid"
+    non_pending = client.get("/orders/11111111-1111-1111-1111-111111111111?token=private-token")
 
     assert 'id="pay-now"' not in disabled.text
     assert 'id="pay-now"' in enabled.text
     assert 'src="/js/pay.js"' in enabled.text
+    assert 'id="pay-now"' not in non_pending.text
+    assert 'src="/js/pay.js"' not in non_pending.text
