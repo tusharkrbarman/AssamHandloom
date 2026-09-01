@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
@@ -19,6 +22,10 @@ from .payments import (
     verify_payment,
 )
 from .settings import Settings
+from .web import render_error, router as web_router
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -47,6 +54,7 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="Luit & Loom API", version="0.1.0", lifespan=lifespan)
+JSON_ERROR_PATHS = {"/health", "/ready"}
 
 STATIC_DIR = Path(__file__).resolve().parents[3] / "app" / "static"
 app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
@@ -158,3 +166,27 @@ def payment_verify(payload: PaymentVerifyRequest, request: Request) -> dict[str,
 async def razorpay_webhook(request: Request) -> dict[str, bool]:
     config = _payment_config_or_error()
     return await handle_razorpay_webhook(request_pool(request), request, config)
+
+
+@app.exception_handler(HTTPException)
+def http_error(request: Request, error: HTTPException) -> Response:
+    if request.url.path.startswith("/api/") or request.url.path in JSON_ERROR_PATHS:
+        return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+    return render_error(request, error.status_code, str(error.detail), str(uuid4()))
+
+
+@app.exception_handler(Exception)
+def unhandled_error(request: Request, _error: Exception) -> Response:
+    request_id = str(uuid4())
+    LOGGER.error(
+        "Unhandled request error",
+        extra={"request_id": request_id, "method": request.method, "path": request.url.path},
+    )
+    if request.url.path.startswith("/api/") or request.url.path in JSON_ERROR_PATHS:
+        response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+        response.headers["x-request-id"] = request_id
+        return response
+    return render_error(request, 500, "The request could not be completed.", request_id)
+
+
+app.include_router(web_router)

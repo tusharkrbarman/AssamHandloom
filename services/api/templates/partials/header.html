@@ -1,0 +1,30 @@
+<header class="site-header">
+  <div class="container header-row">
+    <a class="wordmark" href="/" aria-label="Luit and Loom home">Luit <span>&amp;</span> Loom</a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <ul>
+        <li><a href="/shop">Shop all</a></li>
+        <li><a href="/shop?silk_type=Muga">Muga</a></li>
+        <li><a href="/shop?silk_type=Pat">Pat</a></li>
+        <li><a href="/shop?silk_type=Eri">Eri</a></li>
+        <li><a href="/artisans">Artisans</a></li>
+      </ul>
+    </nav>
+    <div class="header-utilities">
+      <form class="site-search" role="search" action="/search" method="get">
+        <label class="visually-hidden" for="site-search">Search Luit &amp; Loom</label>
+        <svg class="site-search__icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+        <input id="site-search" name="search" type="search" placeholder="Find your weave" autocomplete="off">
+        <button class="visually-hidden" type="submit">Search</button>
+      </form>
+      <a class="bag-link" href="/account">Account</a>
+      <a class="bag-link" href="/cart">Bag (<span data-bag-count>0</span>)</a>
+      <details class="mobile-disclosure">
+        <summary class="disclosure-button">Browse</summary>
+        <nav class="mobile-navigation" aria-label="Mobile navigation">
+          <a href="/shop">Shop all weaves</a><a href="/collections">Collections</a><a href="/artisans">Artisans</a><a href="/our-story">Our story</a><a href="/journal">Journal</a><a href="/account">Your account</a><a href="/cart">Your bag</a><a href="/search">Search</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
