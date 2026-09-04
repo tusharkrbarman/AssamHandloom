@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="product-detail">
+  <div class="product-detail__layout">
+    <div class="product-detail__gallery" aria-label="{{ product.title }} gallery">
+      {% for media in product.media %}
+      {% if media.url %}<img src="{{ media.url }}" alt="{{ media.altText or product.title ~ ' textile detail' }}" width="1000" height="1250"{% if not loop.first %} loading="lazy"{% endif %}>{% endif %}
+      {% else %}<div class="textile-placeholder product-detail__placeholder" role="img" aria-label="Textile-colour study for {{ product.title }}">Textile-colour study</div>{% endfor %}
+      {% if product.media and not product.media[0].url %}<div class="textile-placeholder product-detail__placeholder" role="img" aria-label="Textile-colour study for {{ product.title }}">Textile-colour study</div>{% endif %}
+    </div>
+    <div class="product-detail__summary">
+      <p class="eyebrow">{{ product.silkType }}{% if product.colour %} · {{ product.colour }}{% endif %}</p>
+      <h1>{{ product.title }}</h1>
+      <p>{{ product.description or 'A considered handloom catalogue entry, shared with material and maker context.' }}</p>
+      {% set first_variant = product.variants[0] if product.variants else none %}
+      <p class="price">{% if first_variant %}{{ format_money(first_variant.priceMinor, first_variant.currency) }}{% else %}Price on request{% endif %}</p>
+      <p>{% if product.available %}Available{% else %}Currently unavailable{% endif %}</p>
+      {% if first_variant %}
+      <form class="add-to-bag" data-add-to-bag>
+        <label class="visually-hidden" for="bag-variant">Choose an option</label>
+        <select id="bag-variant" name="variant">{% for variant in product.variants %}<option value="{{ variant.id }}"{% if loop.first %} selected{% endif %}{% if not variant.available %} disabled{% endif %}>{{ variant.title }} — {{ format_money(variant.priceMinor, variant.currency) }}{% if not variant.available %} (sold out){% endif %}</option>{% endfor %}</select>
+        <label class="visually-hidden" for="bag-quantity">Quantity</label><input id="bag-quantity" name="quantity" type="number" min="1" max="10" value="1">
+        <button class="button" type="submit">Add to bag</button><p class="add-to-bag__note" aria-live="polite" hidden></p>
+      </form>
+      {% else %}<p class="empty-state">Options for this weave are being prepared.</p>{% endif %}
+    </div>
+  </div>
+  <section class="specifications" aria-labelledby="specifications-title"><h2 id="specifications-title">Specifications</h2><dl><div><dt>Silk</dt><dd>{{ product.silkType }}</dd></div><div><dt>Dimensions</dt><dd>Verification pending</dd></div><div><dt>Care</dt><dd>Request product-specific care guidance before purchase.</dd></div><div><dt>Occasion</dt><dd>{{ product.occasion or 'Verification pending' }}</dd></div></dl></section>
+  <section class="provenance" aria-labelledby="provenance-title"><p class="eyebrow">Provenance</p><h2 id="provenance-title">Catalogue record</h2><dl><div><dt>Artisan</dt><dd>Verification pending</dd></div><div><dt>Region</dt><dd>Verification pending</dd></div><div><dt>Motif</dt><dd>Verification pending</dd></div><div><dt>Production details</dt><dd>Verification pending</dd></div></dl><p>Provenance details are added only after verification.</p></section>
+  <section class="product-care" aria-labelledby="shipping-title"><h2 id="shipping-title">Shipping, returns &amp; care</h2><p>Shipping, returns, and product-specific care details will be verified before checkout opens.</p></section>
+  {% if related %}<section class="related-products" aria-labelledby="related-title"><h2 id="related-title">More in {{ product.silkType }}</h2><div class="product-grid">{% for product in related %}{% include "partials/product-card.html" %}{% endfor %}</div></section>{% endif %}
+</article>
+{% endblock %}

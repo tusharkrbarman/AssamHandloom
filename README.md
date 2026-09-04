@@ -1,91 +1,111 @@
-# Luit & Loom
+# Luit & Loom — AWS
 
-An Assamese silk saree store with the Quiet Commerce storefront, a private
-single-owner dashboard, D1 catalogue, inventory, and order data, R2 product
-images, Razorpay checkout with transactional email, and optional customer
-accounts.
+An Assamese silk saree store being migrated to an AWS-hosted Python stack.
+This branch contains the FastAPI commerce API, PostgreSQL schema, guest
+checkout, inventory reservations, passwordless order links, Razorpay
+payment settlement, and the public storefront.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tusharkrbarman/AssamHandloom)
+## Current AWS architecture
 
-## Deploy to Cloudflare
+- FastAPI service in [`services/api`](services/api/README.md) serving the public storefront
+- PostgreSQL for catalogue, orders, payments, and inventory
+- Razorpay for payment sessions, callback verification, and webhooks
+- Signed order links for passwordless guest access
+- Legacy Worker retained only as rollback code
 
-1. Select the button above and sign in to Cloudflare.
-2. Choose the Worker name, D1 database name, and R2 bucket name.
-3. Provide three different random values of at least 32 characters for
-   `ADMIN_SETUP_TOKEN`, `ADMIN_RECOVERY_TOKEN`, and `COOKIE_SIGNING_KEY`.
-4. Keep the detected deploy command, `pnpm run deploy`. It applies every pending
-   D1 migration before publishing the Worker.
-5. After deployment, open `/admin/setup` once and create the store owner using
-   `ADMIN_SETUP_TOKEN`.
-6. Add products, variants, stock, collections, and images through `/admin`.
-7. Open `/health`; `{"status":"ok"}` confirms that the Worker can reach D1.
+The Docker image, ECS service, and production AWS resources are still being
+migrated.
 
-### Optional integrations
+## Run the API locally
 
-Without extra secrets the store still works: checkout creates a pending order
-and reports that online payments are unavailable, and no order email is queued.
-
-- To sell online, add `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and
-  `RAZORPAY_WEBHOOK_SECRET` as Worker secrets (`wrangler secret put NAME` or in
-  the Cloudflare dashboard), then point a Razorpay webhook at
-  `/api/webhooks/razorpay` on your deployment using the same webhook secret.
-- To send order email, add `RESEND_API_KEY` and `MAIL_FROM`. Also set
-  `PUBLIC_BASE_URL` so pending-order confirmation emails include the
-  passwordless order link.
-
-Keep the recovery token separate from the setup and cookie-signing values. If
-owner access is lost, open `/admin/recover`; a successful recovery invalidates
-all older owner sessions.
-
-The production catalogue starts empty. The bundled River, Reed & Gold records
-belong only to the older preview and are not loaded into D1.
-
-## Run the Cloudflare store locally
-
-You need Node.js 24 and pnpm 11.
+You need Python 3.12 and a reachable PostgreSQL database:
 
 ```powershell
-pnpm install --frozen-lockfile
-Copy-Item .dev.vars.example .dev.vars
-pnpm run db:migrate:local
-pnpm run dev
+python -m venv services/api/.venv
+services/api/.venv/Scripts/python.exe -m pip install -e "services/api[test]"
+$env:DATABASE_URL = "postgresql://localhost/luit_and_loom"
+$env:COOKIE_SIGNING_KEY = "replace-with-a-random-value-at-least-32-characters"
+services/api/.venv/Scripts/python.exe -m app.migrate
+services/api/.venv/Scripts/uvicorn app.main:app --app-dir services/api --reload
 ```
 
-Replace every value in `.dev.vars` with a different local secret of at least
-32 characters, then open the local URL shown by Wrangler. Create the owner at
-`/admin/setup`. The test suite exercises Razorpay and email with local provider
-stubs; use a deployed test Worker for live-provider testing.
+The migration runner applies the checked-in PostgreSQL migrations in order.
+`GET /health` is the liveness probe; `GET /ready` checks database readiness.
+The application strips query strings from Uvicorn access logs. Configure the
+AWS edge, load balancer, and any upstream proxy to omit or redact query strings
+as well, because order-link credentials are carried in the URL.
 
-Run all Worker checks with:
+## Runtime secrets
+
+Set these as deployment secrets, never in Git:
+
+- `DATABASE_URL`
+- `COOKIE_SIGNING_KEY` (at least 32 characters)
+- `ADMIN_SETUP_TOKEN` (at least 32 characters; used once to create the owner)
+- `ADMIN_RECOVERY_TOKEN` (at least 32 characters; kept separate from setup)
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+- `RESEND_API_KEY`
+- `MAIL_FROM`
+- `PUBLIC_BASE_URL` (used for passwordless order links in email)
+
+Razorpay webhook URL:
+`POST /api/webhooks/razorpay`
+
+## API currently available
+
+- `GET /api/v1/catalog/products` — catalogue search, filters, sorting, and pagination
+- `POST /api/cart/quote` — server-side pricing and availability
+- `POST /api/orders` — guest order creation with a 30-minute reservation
+- `GET /api/orders/{order_id}` — token or signed-link order access
+- `POST /api/payments/session` — create or reuse a Razorpay order
+- `POST /api/payments/verify` — verify the browser payment callback
+- `POST /api/webhooks/razorpay` — verify provider events and settle stock
+
+## Store owner admin
+
+After applying migrations, open `/admin/setup` once to create the owner account
+with `ADMIN_SETUP_TOKEN`. Sign in at `/admin/login` to manage orders and stock:
+
+- `/admin/orders` — review orders, mark paid or shipped, cancel, and issue Razorpay refunds
+- `/admin/inventory` — make idempotent stock adjustments with an audit reason
+
+Status changes and successful refunds enqueue the matching email in
+`email_outbox`; run the one-shot email worker on a scheduler to deliver them.
+
+## Verify the service
 
 ```powershell
-pnpm run verify
+services/api/.venv/Scripts/python.exe -m pytest services/api/tests -q
 ```
 
-## Current scope
+Queued order emails can be delivered with a one-shot worker. Run it from the
+`services/api` directory when Resend is configured:
 
-- Quiet Commerce catalogue, search, filters, collections, and product pages
-- Single-owner setup, login, recovery, signed sessions, CSRF protection, and
-  login lockout
-- Product, variant, collection, publication, and archive management
-- Atomic non-negative inventory adjustments with immutable history
-- JPEG, PNG, and WebP uploads to R2 with public/draft visibility controls
-- Browser bag and guest checkout with server-side price and availability checks
-- Orders with immutable product and price snapshots and time-limited inventory
-  reservations in D1
-- Razorpay checkout with signature-validated, idempotent webhooks
+```powershell
+Push-Location services/api
+.venv/Scripts/python.exe -m app.email_worker
+Pop-Location
+```
+
+## AWS migration status
+
+Implemented:
+
+- FastAPI application and health/readiness probes
+- PostgreSQL catalogue, order, reservation, payment, and adjustment migrations
+- Guest checkout with server-side prices and stock locking
+- Idempotent Razorpay capture handling and inventory deduction
 - Signed, expiring passwordless order links
-- Order confirmation and payment-received email through a retrying Resend
-  outbox
-- A five-minute maintenance cron that releases expired reservations, expires
-  abandoned pending orders, and drains the email outbox
-- Owner order desk at `/admin/orders`: review orders, customer addresses, and
-  payments; mark paid or shipped (with a shipped notification), cancel, and
-  issue full or partial Razorpay refunds
-- Optional customer accounts with order history
-- Security headers on every response (CSP, nosniff, frame denial, HSTS) and
-  per-IP rate limits on checkout, quotes, payment actions, order links, and
-  account auth
+- PostgreSQL email outbox with Resend delivery, retries, and confirmation/payment event hooks
+- Owner admin authentication, order fulfilment/cancellation/refunds, and inventory adjustments
+- Public storefront cutover to FastAPI
+- GitHub CI checks for the API
 
-Not included yet: coupons, reviews, shipping or tax automation,
-delivery status emails beyond shipping, and staff roles beyond the single owner.
+Still pending:
+
+- PostgreSQL catalogue seed/import
+- Docker image and ECS deployment
+- AWS networking, secrets, object storage, and observability
+- Shipping and tax rules

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <meta name="description" content="Luit &amp; Loom presents contemporary Assamese handloom with care and clarity.">
+  <link rel="canonical" href="{{ request.url.scheme }}://{{ request.url.netloc }}{{ request.url.path }}">
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  {% include "partials/header.html" %}
+  <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
+  {% include "partials/footer.html" %}
+  <script src="/js/bag.js" defer></script>
+</body>
+</html>
