@@ -41,9 +41,14 @@ Set these as deployment secrets, never in Git:
 
 - `DATABASE_URL`
 - `COOKIE_SIGNING_KEY` (at least 32 characters)
+- `ADMIN_SETUP_TOKEN` (at least 32 characters; used once to create the owner)
+- `ADMIN_RECOVERY_TOKEN` (at least 32 characters; kept separate from setup)
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
 - `RAZORPAY_WEBHOOK_SECRET`
+- `RESEND_API_KEY`
+- `MAIL_FROM`
+- `PUBLIC_BASE_URL` (used for passwordless order links in email)
 
 Razorpay webhook URL:
 `POST /api/webhooks/razorpay`
@@ -58,10 +63,30 @@ Razorpay webhook URL:
 - `POST /api/payments/verify` — verify the browser payment callback
 - `POST /api/webhooks/razorpay` — verify provider events and settle stock
 
+## Store owner admin
+
+After applying migrations, open `/admin/setup` once to create the owner account
+with `ADMIN_SETUP_TOKEN`. Sign in at `/admin/login` to manage orders and stock:
+
+- `/admin/orders` — review orders, mark paid or shipped, cancel, and issue Razorpay refunds
+- `/admin/inventory` — make idempotent stock adjustments with an audit reason
+
+Status changes and successful refunds enqueue the matching email in
+`email_outbox`; run the one-shot email worker on a scheduler to deliver them.
+
 ## Verify the service
 
 ```powershell
 services/api/.venv/Scripts/python.exe -m pytest services/api/tests -q
+```
+
+Queued order emails can be delivered with a one-shot worker. Run it from the
+`services/api` directory when Resend is configured:
+
+```powershell
+Push-Location services/api
+.venv/Scripts/python.exe -m app.email_worker
+Pop-Location
 ```
 
 ## AWS migration status
@@ -73,6 +98,8 @@ Implemented:
 - Guest checkout with server-side prices and stock locking
 - Idempotent Razorpay capture handling and inventory deduction
 - Signed, expiring passwordless order links
+- PostgreSQL email outbox with Resend delivery, retries, and confirmation/payment event hooks
+- Owner admin authentication, order fulfilment/cancellation/refunds, and inventory adjustments
 - Public storefront cutover to FastAPI
 - GitHub CI checks for the API
 
@@ -81,4 +108,4 @@ Still pending:
 - PostgreSQL catalogue seed/import
 - Docker image and ECS deployment
 - AWS networking, secrets, object storage, and observability
-- Admin order management, email delivery, refunds, shipping, and tax rules
+- Shipping and tax rules

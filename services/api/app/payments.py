@@ -14,6 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import ConnectionPool
 
+from .email import enqueue_order_email
 from .links import verify_order_link
 from .settings import Settings
 
@@ -340,6 +341,100 @@ def _reservation_rows(connection, order_id: str) -> list[dict[str, object]]:
         return list(cursor.fetchall())
 
 
+def _settle_reserved_order_locked(
+    connection,
+    order: dict[str, object],
+    actor: str,
+    reservations: list[dict[str, object]] | None = None,
+    at: datetime | None = None,
+) -> str:
+    """Consume an order's active reservations and mark it paid.
+
+    The caller must hold the order row lock and be inside a transaction.
+    """
+    status = str(order["status"])
+    if status in {"paid", "fulfilled"}:
+        return "already_paid"
+    if status != "pending":
+        return "expired"
+
+    now = at or _now()
+    rows = reservations if reservations is not None else _reservation_rows(connection, str(order["id"]))
+    if not rows or any(
+        row["state"] != "active"
+        or row["expires_at"] <= now
+        or int(row["stock_quantity"]) < int(row["quantity"])
+        for row in rows
+    ):
+        _expire_pending_order(connection, str(order["id"]), now)
+        return "expired"
+
+    with connection.cursor() as cursor:
+        for row in rows:
+            quantity = int(row["quantity"])
+            cursor.execute(
+                """
+                INSERT INTO inventory_adjustments (
+                  id, variant_id, delta, reason, idempotency_key, actor, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """,
+                (
+                    f"sale:{row['id']}",
+                    row["variant_id"],
+                    -quantity,
+                    f"Order {order['id']} paid",
+                    f"sale:{row['id']}",
+                    actor,
+                    now,
+                ),
+            )
+            if cursor.rowcount == 0:
+                continue
+            cursor.execute(
+                """
+                UPDATE inventory_items
+                SET quantity = quantity - %s, version = version + 1, updated_at = %s
+                WHERE variant_id = %s AND quantity >= %s
+                """,
+                (quantity, now, row["variant_id"], quantity),
+            )
+            if cursor.rowcount != 1:
+                raise _error(409, "inventory_conflict", "Stock changed while confirming this payment.")
+        cursor.execute(
+            "UPDATE inventory_reservations SET state = 'consumed' WHERE order_id = %s AND state = 'active'",
+            (order["id"],),
+        )
+        cursor.execute(
+            "UPDATE orders SET status = 'paid', updated_at = %s WHERE id = %s AND status = 'pending'",
+            (now, order["id"]),
+        )
+        if cursor.rowcount != 1:
+            raise _error(409, "order_conflict", "The order changed before payment completed.")
+        enqueue_order_email(connection, "order_paid", str(order["id"]), at=now)
+    return "paid"
+
+
+def settle_reserved_order(
+    pool: ConnectionPool,
+    order_id: str,
+    actor: str = "owner",
+) -> str:
+    """Settle a pending order without a provider payment (owner action)."""
+    order_id = _uuid(order_id)
+    with pool.connection() as connection:
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, status FROM orders WHERE id = %s FOR UPDATE",
+                    (order_id,),
+                )
+                order = cursor.fetchone()
+            if not order:
+                raise _error(404, "not_found", "That order could not be found.")
+            return _settle_reserved_order_locked(connection, order, actor)
+
+
 def apply_captured_payment(
     pool: ConnectionPool,
     payment_id: str,
@@ -391,57 +486,14 @@ def apply_captured_payment(
             if order["status"] != "pending":
                 return "requires_review"
 
-            now = _now()
-            reservations = _reservation_rows(connection, str(order["id"]))
-            if not reservations or any(
-                row["state"] != "active"
-                or row["expires_at"] <= now
-                or int(row["stock_quantity"]) < int(row["quantity"])
-                for row in reservations
-            ):
-                _expire_pending_order(connection, str(order["id"]), now)
+            outcome = _settle_reserved_order_locked(
+                connection,
+                order,
+                actor,
+                reservations=_reservation_rows(connection, str(order["id"])),
+            )
+            if outcome == "expired":
                 return "requires_review"
-
-            with connection.cursor() as cursor:
-                for row in reservations:
-                    quantity = int(row["quantity"])
-                    cursor.execute(
-                        """
-                        INSERT INTO inventory_adjustments (
-                          id, variant_id, delta, reason, idempotency_key, actor, created_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (idempotency_key) DO NOTHING
-                        """,
-                        (
-                            f"sale:{row['id']}",
-                            row["variant_id"],
-                            -quantity,
-                            f"Order {order['id']} paid",
-                            f"sale:{row['id']}",
-                            actor,
-                            now,
-                        ),
-                    )
-                    if cursor.rowcount == 0:
-                        continue
-                    cursor.execute(
-                        """
-                        UPDATE inventory_items
-                        SET quantity = quantity - %s, version = version + 1, updated_at = %s
-                        WHERE variant_id = %s AND quantity >= %s
-                        """,
-                        (quantity, now, row["variant_id"], quantity),
-                    )
-                    if cursor.rowcount != 1:
-                        raise _error(409, "inventory_conflict", "Stock changed while confirming this payment.")
-                cursor.execute(
-                    "UPDATE inventory_reservations SET state = 'consumed' WHERE order_id = %s AND state = 'active'",
-                    (order["id"],),
-                )
-                cursor.execute(
-                    "UPDATE orders SET status = 'paid', updated_at = %s WHERE id = %s AND status = 'pending'",
-                    (now, order["id"]),
-                )
     return "already_captured" if already_captured else "captured"
 
 
@@ -519,15 +571,21 @@ def _process_razorpay_webhook(
         provider_order_id = _text(payment_entity, "order_id")
         if provider_order_id.startswith("order_"):
             with pool.connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE order_payments
-                        SET status = 'failed', failure_reason = %s, updated_at = %s
-                        WHERE provider_order_id = %s AND status <> 'captured'
-                        """,
-                        (_text(payment_entity, "error_description") or "Payment failed.", _now(), provider_order_id),
-                    )
+                with connection.transaction():
+                    at = _now()
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE order_payments
+                            SET status = 'failed', failure_reason = %s, updated_at = %s
+                            WHERE provider_order_id = %s AND status <> 'captured'
+                            RETURNING order_id
+                            """,
+                            (_text(payment_entity, "error_description") or "Payment failed.", at, provider_order_id),
+                        )
+                        payment = cursor.fetchone()
+                    if payment:
+                        enqueue_order_email(connection, "payment_failed", str(payment["order_id"]), at=at)
         return {"received": True}
 
     if event_type not in {"payment.captured", "order.paid"}:

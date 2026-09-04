@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .catalogue import CatalogueQuery, list_products
+from .admin import router as admin_router
 from .dependencies import request_pool, require_same_origin
 from .orders import CartQuoteRequest, CheckoutRequest, create_order, get_order, quote_cart
 from .payments import (
@@ -224,4 +225,5 @@ def unhandled_error(request: Request, _error: Exception) -> Response:
     return apply_security_headers(response)
 
 
+app.include_router(admin_router)
 app.include_router(web_router)

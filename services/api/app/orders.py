@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import ConnectionPool
 
 from .catalogue import format_money
+from .email import enqueue_order_email
 from .links import create_order_link, verify_order_link
 
 
@@ -296,6 +297,13 @@ def create_order(
                             created_at,
                         ),
                     )
+                enqueue_order_email(
+                    connection,
+                    "order_confirmation",
+                    order_id,
+                    str(fields["email"]),
+                    created_at,
+                )
     return {
         "orderId": order_id,
         "token": token,
