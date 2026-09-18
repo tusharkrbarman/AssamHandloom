@@ -1,0 +1,17 @@
+<article class="product-card">
+  <a class="product-card__image" href="/products/{{ product.slug }}" aria-label="View {{ product.title }}">
+    {% if product.mediaUrl %}
+    <img class="product-card__primary-image" src="{{ product.mediaUrl }}" alt="{{ product.altText or product.title ~ ' in ' ~ product.silkType ~ ' silk' }}" width="720" height="900"{% if not priority %} loading="lazy"{% endif %}>
+    {% else %}
+    <span class="textile-placeholder" role="img" aria-label="Textile-colour study for {{ product.title }}">Textile-colour study</span>
+    {% endif %}
+  </a>
+  <div class="product-card__body">
+    <p class="eyebrow">{{ product.silkType }}</p>
+    <h2><a href="/products/{{ product.slug }}">{{ product.title }}</a></h2>
+    <div class="product-card__meta-row">
+      <p class="price">{{ format_money(product.priceMinor, product.currency) }}</p>
+      <p class="availability{% if not product.available %} is-unavailable{% endif %}">{% if product.available %}Available{% else %}Currently unavailable{% endif %}</p>
+    </div>
+  </div>
+</article>

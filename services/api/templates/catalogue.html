@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="catalogue-intro">
+  <p class="eyebrow">Assamese handloom, considered slowly</p>
+  <h1>{% if collection %}{{ collection.title }}{% elif request.url.path == '/search' %}Search the catalogue{% else %}Shop the catalogue{% endif %}</h1>
+  <p>{% if collection %}A gathering of weaves selected around one material conversation.{% else %}Each listing is a transparent starting point for a future collection release.{% endif %}</p>
+</section>
+<form class="catalogue-filters" method="get" action="{{ request.url.path }}" aria-label="Filter the catalogue">
+  <div><label for="catalogue-search">Search</label><input id="catalogue-search" name="search" value="{{ query.search or '' }}"></div>
+  <div><label for="silk-type">Weave (silk type)</label><select id="silk-type" name="silk_type"><option value="">All silks</option><option value="Muga"{% if query.silk_type == 'Muga' %} selected{% endif %}>Muga</option><option value="Pat"{% if query.silk_type == 'Pat' %} selected{% endif %}>Pat</option><option value="Eri"{% if query.silk_type == 'Eri' %} selected{% endif %}>Eri</option></select></div>
+  <div><label for="catalogue-colour">Colour</label><select id="catalogue-colour" name="colour"><option value="">All colours</option><option value="Red"{% if query.colour == 'Red' %} selected{% endif %}>Red</option><option value="Ivory"{% if query.colour == 'Ivory' %} selected{% endif %}>Ivory</option><option value="Green"{% if query.colour == 'Green' %} selected{% endif %}>Green</option></select></div>
+  <div><label for="catalogue-occasion">Occasion</label><select id="catalogue-occasion" name="occasion"><option value="">All occasions</option><option value="Wedding"{% if query.occasion == 'Wedding' %} selected{% endif %}>Wedding</option><option value="Everyday"{% if query.occasion == 'Everyday' %} selected{% endif %}>Everyday</option></select></div>
+  <div><label for="catalogue-sort">Price &amp; sort</label><select id="catalogue-sort" name="sort"><option value="featured"{% if query.sort == 'featured' %} selected{% endif %}>Featured</option><option value="newest"{% if query.sort == 'newest' %} selected{% endif %}>Newest</option><option value="price_asc"{% if query.sort == 'price_asc' %} selected{% endif %}>Price: low to high</option><option value="price_desc"{% if query.sort == 'price_desc' %} selected{% endif %}>Price: high to low</option></select></div>
+  <div><input id="available-only" type="checkbox" name="available_only" value="true"{% if query.available_only %} checked{% endif %}><label for="available-only">Available now</label></div>
+  <button type="submit">Apply filters</button>
+</form>
+{% set include_pagination = true %}{% set limit = none %}{% include "partials/product-grid.html" %}
+{% endblock %}

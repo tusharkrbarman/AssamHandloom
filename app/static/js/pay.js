@@ -9,8 +9,12 @@
   var orderId = button.getAttribute("data-order-id") || "";
   var errorBox = document.getElementById("pay-error");
 
-  function currentToken() {
-    return new URLSearchParams(window.location.search).get("token") || "";
+  function currentAccess() {
+    var params = new URLSearchParams(window.location.search);
+    var token = params.get("token");
+    return token
+      ? { token: token }
+      : { exp: params.get("exp"), sig: params.get("sig") };
   }
 
   function showError(message) {
@@ -40,21 +44,18 @@
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({
+      body: JSON.stringify(Object.assign(currentAccess(), {
         orderId: orderId,
-        token: currentToken(),
         razorpayOrderId: response.razorpay_order_id,
         razorpayPaymentId: response.razorpay_payment_id,
         signature: response.razorpay_signature,
-      }),
+      })),
     })
       .then(function (verified) {
         if (!verified.ok) {
           return readError(verified);
         }
-        window.location.replace(
-          "/orders/" + orderId + "?token=" + encodeURIComponent(currentToken()),
-        );
+        window.location.replace(window.location.pathname + window.location.search);
       })
       .catch(function (error) {
         showError(error.message || "We could not confirm this payment. Please try again.");
@@ -70,7 +71,7 @@
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ orderId: orderId, token: currentToken() }),
+      body: JSON.stringify(Object.assign(currentAccess(), { orderId: orderId })),
     })
       .then(function (response) {
         if (!response.ok) {
