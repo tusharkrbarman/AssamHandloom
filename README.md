@@ -71,6 +71,10 @@ with `ADMIN_SETUP_TOKEN`. Sign in at `/admin/login` to manage orders and stock:
 - `/admin/orders` — review orders, mark paid or shipped, cancel, and issue Razorpay refunds
 - `/admin/inventory` — make idempotent stock adjustments with an audit reason
 
+Online orders are delivered within India with a flat ₹150 shipping charge.
+Change-of-mind returns and exchanges are not accepted; remedies required by
+applicable law remain available.
+
 Status changes and successful refunds enqueue the matching email in
 `email_outbox`; run the one-shot email worker on a scheduler to deliver them.
 
@@ -108,4 +112,4 @@ Still pending:
 - PostgreSQL catalogue seed/import
 - Docker image and ECS deployment
 - AWS networking, secrets, object storage, and observability
-- Shipping and tax rules
+- Tax rules

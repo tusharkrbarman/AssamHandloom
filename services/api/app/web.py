@@ -38,7 +38,7 @@ EDITORIAL_PAGES = {
     },
     "/our-story": {
         "title": "Our story",
-        "body": "Luit & Loom presents Assamese handloom with care. Browse the catalogue, reserve weaves through checkout preview, and complete payment once online payments open.",
+        "body": "Luit & Loom presents Assamese handloom with care. Browse the catalogue and place your order securely online for delivery within India.",
     },
     "/journal": {
         "title": "Journal",
@@ -54,11 +54,11 @@ EDITORIAL_PAGES = {
     },
     "/pages/shipping": {
         "title": "Shipping",
-        "body": "We ship across India first. Exact rates and timelines are published with the payments release; placing a preview order reserves stock at no cost.",
+        "body": "Orders are accepted online for delivery within India. A flat ₹150 shipping charge is added to each order and shown before payment.",
     },
     "/pages/returns": {
         "title": "Returns",
-        "body": "Returns terms are being finalised for the commerce launch and will be confirmed before any payment is taken.",
+        "body": "All sales are final. We do not accept returns or exchanges for a change of mind, personal preference, or natural variations in handwoven textiles. If an item is damaged, defective, incorrect, not as described, or otherwise qualifies for a remedy under applicable law, contact us with your order reference so we can arrange an appropriate replacement or refund.",
     },
     "/pages/contact": {
         "title": "Contact",
@@ -66,7 +66,7 @@ EDITORIAL_PAGES = {
     },
     "/pages/faq": {
         "title": "Frequently asked questions",
-        "body": "You can browse, bag, and place a reservation order today. Online payments activate with our next release; reserved weaves cost nothing until then.",
+        "body": "Orders and payments are completed online. Delivery is available within India with a flat ₹150 shipping charge. Change-of-mind returns and exchanges are not accepted; remedies required by applicable law remain available.",
     },
 }
 

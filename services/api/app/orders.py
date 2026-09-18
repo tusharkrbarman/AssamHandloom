@@ -14,6 +14,7 @@ from .links import create_order_link, verify_order_link
 MAX_LINES = 20
 MAX_QUANTITY_PER_LINE = 10
 RESERVATION_MINUTES = 30
+SHIPPING_MINOR = 15_000
 UUID_PATTERN = compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", flags=2)
 EMAIL_PATTERN = compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
 PHONE_PATTERN = compile(r"^[+0-9][0-9 ()-]+$")
@@ -227,8 +228,7 @@ def create_order(
             if not quote["allAvailable"]:
                 raise _error(409, "insufficient_stock", "One or more weaves just sold out. Please review your bag.")
             by_id = {str(row["id"]).lower(): row for row in rows}
-            # ponytail: flat shipping placeholder; replace with a shipping policy before live payments
-            shipping_minor = 0
+            shipping_minor = SHIPPING_MINOR
             total_minor = int(quote["subtotalMinor"]) + shipping_minor
             with connection.cursor() as cursor:
                 cursor.execute(

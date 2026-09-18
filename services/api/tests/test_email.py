@@ -145,6 +145,58 @@ def order_record(status: str = "pending") -> dict[str, object]:
     }
 
 
+def checkout_request() -> CheckoutRequest:
+    return CheckoutRequest.model_validate(
+        {
+            "items": [{"variantId": "123e4567-e89b-12d3-a456-426614174001", "quantity": 1}],
+            "email": "buyer@example.com",
+            "name": "Asha Barman",
+            "phone": "+919999999999",
+            "address1": "1 Silk Road",
+            "city": "Guwahati",
+            "state": "Assam",
+            "postalCode": "781001",
+        }
+    )
+
+
+def stub_available_checkout(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.orders._variant_rows",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "123e4567-e89b-12d3-a456-426614174001",
+                "sku": "MUGA-1",
+                "variant_title": "Gold",
+                "product_title": "Muga Silk",
+                "price_minor": 125000,
+                "currency": "INR",
+                "quantity": 2,
+            }
+        ],
+    )
+    monkeypatch.setattr("app.orders._reserved_rows", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        "app.orders._quote_from_rows",
+        lambda *_args, **_kwargs: {
+            "currency": "INR",
+            "lines": [
+                {
+                    "variantId": "123e4567-e89b-12d3-a456-426614174001",
+                    "sku": "MUGA-1",
+                    "productTitle": "Muga Silk",
+                    "variantTitle": "Gold",
+                    "quantity": 1,
+                    "unitPriceMinor": 125000,
+                    "lineTotalMinor": 125000,
+                }
+            ],
+            "subtotalMinor": 125000,
+            "allAvailable": True,
+        },
+    )
+
+
 def test_mail_config_requires_api_key_and_sender(monkeypatch) -> None:
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
     monkeypatch.setenv("MAIL_FROM", "Luit & Loom <orders@example.com>")
@@ -213,52 +265,8 @@ def test_enqueue_order_email_is_idempotent() -> None:
 
 def test_order_creation_enqueues_confirmation(monkeypatch) -> None:
     pool = FakePool()
-    payload = CheckoutRequest.model_validate(
-        {
-            "items": [{"variantId": "123e4567-e89b-12d3-a456-426614174001", "quantity": 1}],
-            "email": "buyer@example.com",
-            "name": "Asha Barman",
-            "phone": "+919999999999",
-            "address1": "1 Silk Road",
-            "city": "Guwahati",
-            "state": "Assam",
-            "postalCode": "781001",
-        }
-    )
-    monkeypatch.setattr(
-        "app.orders._variant_rows",
-        lambda *_args, **_kwargs: [
-            {
-                "id": "123e4567-e89b-12d3-a456-426614174001",
-                "sku": "MUGA-1",
-                "variant_title": "Gold",
-                "product_title": "Muga Silk",
-                "price_minor": 125000,
-                "currency": "INR",
-                "quantity": 2,
-            }
-        ],
-    )
-    monkeypatch.setattr("app.orders._reserved_rows", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(
-        "app.orders._quote_from_rows",
-        lambda *_args, **_kwargs: {
-            "currency": "INR",
-            "lines": [
-                {
-                    "variantId": "123e4567-e89b-12d3-a456-426614174001",
-                    "sku": "MUGA-1",
-                    "productTitle": "Muga Silk",
-                    "variantTitle": "Gold",
-                    "quantity": 1,
-                    "unitPriceMinor": 125000,
-                    "lineTotalMinor": 125000,
-                }
-            ],
-            "subtotalMinor": 125000,
-            "allAvailable": True,
-        },
-    )
+    payload = checkout_request()
+    stub_available_checkout(monkeypatch)
     enqueued: list[tuple[object, ...]] = []
     monkeypatch.setattr(
         "app.orders.enqueue_order_email",
@@ -269,6 +277,17 @@ def test_order_creation_enqueues_confirmation(monkeypatch) -> None:
 
     assert enqueued and enqueued[0][0] == "order_confirmation"
     assert enqueued[0][2] == "buyer@example.com"
+
+
+def test_order_creation_adds_flat_india_shipping(monkeypatch) -> None:
+    pool = FakePool()
+    stub_available_checkout(monkeypatch)
+    monkeypatch.setattr("app.orders.enqueue_order_email", lambda *_args: None)
+
+    result = create_order(pool, checkout_request(), SECRET)  # type: ignore[arg-type]
+
+    assert result["order"]["shippingMinor"] == 15000
+    assert result["order"]["totalMinor"] == 140000
 
 
 def test_captured_payment_enqueues_paid_email(monkeypatch) -> None:

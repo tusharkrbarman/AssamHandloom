@@ -9,7 +9,7 @@
 </section>
 {% elif kind == "checkout" %}
 <section class="commerce-page">
-  <p class="eyebrow">Checkout preview</p>
+  <p class="eyebrow">Online checkout</p>
   <h1>Complete your order</h1>
   {% if message %}<p class="form-alert" role="alert">{{ message }}</p>{% endif %}
   <form class="checkout-form" method="post" action="/checkout">
@@ -35,7 +35,7 @@
         <div id="checkout-summary"><p class="empty-state">Reviewing your bag…</p></div>
       </aside>
     </div>
-    <p class="order-note">Your weaves are held for 30 minutes once you place the order. {% if payments_enabled %}You can pay securely as soon as your order is placed.{% else %}Online payments are not active yet — placing the order reserves stock and costs nothing.{% endif %}</p>
+    <p class="order-note">A flat ₹150 shipping charge is added to every India order. Your weaves are held for 30 minutes once you place the order. {% if payments_enabled %}You can pay securely as soon as your order is placed.{% else %}Online payments are not active yet — placing the order reserves stock and costs nothing.{% endif %}</p>
     <button class="button" type="submit">Place order</button>
   </form>
   <noscript><p class="empty-state">This checkout needs JavaScript to attach your bag.</p></noscript>
